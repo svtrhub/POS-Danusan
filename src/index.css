@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-system: #F2F2F7;
+    --card-system: #FFFFFF;
+    --text-primary: #1C1C1E;
+    --text-secondary: #8E8E93;
+    --brand-blue: #007AFF;
+    --brand-green: #34C759;
+    --brand-orange: #FF9500;
+    --brand-red: #FF3B30;
+  }
+
+  body {
+    background-color: #F2F2F7;
+    color: #1C1C1E;
+    -webkit-font-smoothing: antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.pressable {
+  transition: transform 80ms cubic-bezier(0.2, 0, 0, 1), filter 80ms ease;
+  touch-action: manipulation;
+}
+
+.pressable:active {
+  transform: scale(0.96);
+  filter: brightness(0.95);
+}
+
+/* Custom scrollbars for modals */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(142, 142, 147, 0.35);
+  border-radius: 9999px;
+}

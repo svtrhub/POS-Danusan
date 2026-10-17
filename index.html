@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>POS DANUSAN</title>
+    <meta name="description" content="Aplikasi POS kasir danusan mobile-first dengan sinkronisasi Google Sheets Apps Script, offline queue, dan dukungan PWA installable." />
+    <meta property="og:title" content="POS DANUSAN" />
+    <meta property="og:description" content="Aplikasi POS kasir danusan mobile-first dengan sinkronisasi Google Sheets Apps Script, offline queue, dan dukungan PWA installable." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- PWA & Mobile Web App Meta -->
+    <meta name="theme-color" content="#0066FF" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="POS DANUSAN" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+  </head>
+  <body class="bg-[#F2F2F7] text-[#1C1C1E] antialiased select-none overscroll-y-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Clean, resilient PWA Service Worker Registration
+      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+        window.addEventListener('load', function() {
+          try {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (var i = 0; i < registrations.length; i++) {
+                var reg = registrations[i];
+                if (reg && reg.active && reg.active.scriptURL && reg.active.scriptURL.indexOf('?v=') !== -1) {
+                  reg.unregister();
+                }
+              }
+            }).catch(function() {});
+
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+              .catch(function(err) {
+                console.warn('PWA SW note:', err);
+              });
+          } catch (e) {
+            console.warn('PWA setup note:', e);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

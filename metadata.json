@@ -1,0 +1,6 @@
+{
+  "name": "Danusan POS - Kasir & PWA Google Sheets",
+  "description": "Aplikasi POS kasir danusan mobile-first dengan sinkronisasi Google Sheets Apps Script, offline queue, dan dukungan PWA installable.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

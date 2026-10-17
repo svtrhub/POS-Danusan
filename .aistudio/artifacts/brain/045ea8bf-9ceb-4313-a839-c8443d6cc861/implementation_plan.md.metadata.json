@@ -1,0 +1,6 @@
+{
+  "summary": "Rencana implementasi dukungan upload galeri dan kamera melalui Lembar Pemilih Native OS: menghapus atribut capture=\"environment\" pada input file, menyesuaikan label tombol bukti pembayaran, dan memastikan kompresi gambar tetap optimal tanpa mengubah integrasi Google Apps Script.",
+  "updatedAt": "2026-10-17T14:41:16.078630518Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
