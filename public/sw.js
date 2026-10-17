@@ -1,15 +1,15 @@
 // Danusan POS Service Worker (Network-First for instant updates)
-const CACHE_NAME = 'danusan-pos-v2';
+const CACHE_NAME = 'danusan-pos-v3';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/icon.svg',
-  '/favicon.png',
-  '/apple-touch-icon.png',
-  '/pwa-192x192.png',
-  '/pwa-512x512.png',
-  '/pwa-maskable-512x512.png'
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icon.svg',
+  './favicon.png',
+  './apple-touch-icon.png',
+  './pwa-192x192.png',
+  './pwa-512x512.png',
+  './pwa-maskable-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('SW pre-cache warning:', err);
+        console.warn('SW pre-cache note:', err);
       });
     })
   );
@@ -61,7 +61,9 @@ self.addEventListener('fetch', (event) => {
         return caches.match(event.request).then((cached) => {
           if (cached) return cached;
           if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
+            return caches.match('./index.html').then((indexFallback) => {
+              return indexFallback || caches.match('/index.html');
+            });
           }
         });
       })

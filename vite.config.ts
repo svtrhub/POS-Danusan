@@ -22,6 +22,7 @@ const swMimePlugin: Plugin = {
 
 export default defineConfig(() => {
   return {
+    base: './',
     plugins: [react(), tailwindcss(), swMimePlugin],
     resolve: {
       alias: {
