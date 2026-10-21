@@ -1,0 +1,408 @@
+/**
+ * DANUSAN POS — SCALABLE 1-TAB ENGINE (OPTION 1)
+ * Area 1 (Kolom A:G): Log Transaksi Murni (Siap Copy-Paste ke Template Organisasi)
+ * Area 2 (Kolom I:M & O:P): Master Katalog Dinamis, Soft-Archive & Auto-Rekap SUMIFS
+ */
+
+const FOLDER_NAME = "Danusan POS - Bukti Pembayaran";
+
+const DEFAULT_PRODUCTS = [
+  { id: "p1", name: "Piscok", price: 5000 },
+  { id: "p2", name: "Risol", price: 6000 },
+  { id: "p3", name: "Risol Bundle", price: 15000 },
+  { id: "p4", name: "Es Teh", price: 5000 },
+  { id: "p5", name: "Es Kopi", price: 12000 },
+  { id: "p6", name: "Tarot Reading", price: 10000 },
+  { id: "p7", name: "Es Degan", price: 10000 },
+  { id: "p8", name: "Tahu Bakso", price: 5000 },
+  { id: "p9", name: "Air Mineral", price: 3000 }
+];
+
+function doGet(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheets()[0];
+    ensureSheetStructure_(sheet);
+
+    const catalog = readCatalogFromSheet_(sheet);
+    const activeProducts = catalog.filter(item => item.status !== "Arsip");
+
+    return jsonResponse({
+      status: "ok",
+      products: activeProducts,
+      catalog_total: catalog.length
+    });
+  } catch (err) {
+    return jsonResponse({ status: "error", message: String(err.message || err) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+
+    const payload = JSON.parse(e.postData.contents);
+    const action = payload.action || "submitOrder";
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheets()[0];
+    ensureSheetStructure_(sheet);
+
+    // 1. Sinkronisasi Tambah / Edit / Hapus (Soft-Archive) Menu dari App ke Sheet
+    if (action === "saveProducts") {
+      if (!Array.isArray(payload.products)) {
+        throw new Error("Format daftar menu tidak valid");
+      }
+      const updatedActive = syncCatalogToSheet_(sheet, payload.products);
+      return jsonResponse({ status: "ok", products: updatedActive });
+    }
+
+    // 2. Simpan Transaksi Baru ke Area 1 (Kolom A:G)
+    if (action === "submitOrder") {
+      const cache = CacheService.getScriptCache();
+      const orderId = String(payload.order_id || "");
+
+      if (orderId && cache.get("ORD_" + orderId)) {
+        return jsonResponse({ status: "ok", duplicate: true, order_id: orderId });
+      }
+
+      let photoUrl = "";
+      if (payload.photo_base64) {
+        photoUrl = savePhotoToDrive_(
+          payload.photo_base64,
+          payload.photo_mime || "image/jpeg",
+          payload.payment_method || "PAY",
+          orderId
+        );
+      }
+
+      const timestamp = payload.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+      const paymentMethod = payload.payment_method || "QRIS";
+      let remainingDiscount = Math.max(0, Number(payload.discount_total || 0));
+      const items = Array.isArray(payload.items) ? payload.items : [];
+
+      if (items.length === 0) throw new Error("Keranjang kosong");
+
+      const rows = items.map(item => {
+        const qty = Number(item.qty || 1);
+        const unitPrice = Number(item.unit_price || 0);
+        let rowTotal = qty * unitPrice;
+
+        if (remainingDiscount > 0) {
+          const cut = Math.min(rowTotal, remainingDiscount);
+          rowTotal -= cut;
+          remainingDiscount -= cut;
+        }
+
+        return [
+          timestamp,
+          String(item.name),
+          qty,
+          unitPrice,
+          rowTotal,
+          paymentMethod,
+          photoUrl
+        ];
+      });
+
+      const startRow = getFirstEmptySalesRow_(sheet);
+      sheet.getRange(startRow, 1, rows.length, 7).setValues(rows);
+
+      // Pastikan jika ada item yang belum terdaftar di Katalog I:M, otomatis ditambahkan
+      ensureItemsInCatalog_(sheet, items);
+
+      if (orderId) {
+        cache.put("ORD_" + orderId, "1", 21600);
+      }
+
+      return jsonResponse({
+        status: "ok",
+        order_id: orderId,
+        rows_written: rows.length,
+        photo_url: photoUrl
+      });
+    }
+
+    throw new Error("Action tidak dikenal: " + action);
+  } catch (err) {
+    return jsonResponse({ status: "error", message: String(err.message || err) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Memastikan Header Transaksi (A1:G1), Header Katalog & Rekap (I1:M1),
+ * dan Ringkasan Pembayaran (O1:P4) tersedia di Sheet.
+ */
+function ensureSheetStructure_(sheet) {
+  // Area 1: Header Log Transaksi (A1:G1)
+  const a1 = sheet.getRange(1, 1).getValue();
+  if (!a1) {
+    sheet.getRange(1, 1, 1, 7).setValues([[
+      "Waktu",
+      "Nama Barang",
+      "Jumlah",
+      "Harga Satuan (Rp)",
+      "Total (Rp)",
+      "Pembayaran",
+      "Foto Dokumentasi"
+    ]]);
+    sheet.getRange(1, 1, 1, 7).setFontWeight("bold");
+  }
+
+  // Area 2: Header Katalog Menu & Rekap per Barang (I1:M1)
+  const i1 = sheet.getRange(1, 9).getValue();
+  if (!i1) {
+    sheet.getRange(1, 9, 1, 5).setValues([[
+      "Nama Menu",
+      "Harga Satuan (Rp)",
+      "Status",
+      "Qty Terjual",
+      "Total Omzet (Rp)"
+    ]]);
+    sheet.getRange(1, 9, 1, 5).setFontWeight("bold");
+
+    // Inisialisasi 9 menu awal jika katalog masih kosong
+    writeCatalogRowsToSheet_(sheet, DEFAULT_PRODUCTS.map(p => ({
+      name: p.name,
+      price: p.price,
+      status: "Aktif"
+    })));
+  }
+
+  // Area 3: Ringkasan Metode Pembayaran Otomatis (O1:P4)
+  const o1 = sheet.getRange(1, 15).getValue();
+  if (!o1) {
+    sheet.getRange(1, 15, 1, 2).setValues([["Ringkasan Kas", "Total (Rp)"]]);
+    sheet.getRange(1, 15, 1, 2).setFontWeight("bold");
+    sheet.getRange(2, 15, 3, 1).setValues([
+      ["Total Penjualan"],
+      ["Total QRIS"],
+      ["Total Cash"]
+    ]);
+    sheet.getRange(2, 16, 3, 1).setFormulas([
+      ["=SUM($E$2:$E$10000)"],
+      ["=SUMIFS($E$2:$E$10000, $F$2:$F$10000, \"QRIS\")"],
+      ["=SUMIFS($E$2:$E$10000, $F$2:$F$10000, \"Cash\")"]
+    ]);
+  }
+}
+
+/**
+ * Membaca daftar katalog dari Kolom I:M
+ */
+function readCatalogFromSheet_(sheet) {
+  const maxRows = Math.max(sheet.getLastRow(), 2);
+  const values = sheet.getRange(2, 9, maxRows, 5).getValues();
+  const catalog = [];
+
+  for (let i = 0; i < values.length; i++) {
+    const name = String(values[i][0] || "").trim();
+    if (!name) continue;
+    const price = Number(values[i][1] || 0);
+    const status = String(values[i][2] || "Aktif").trim();
+    const soldQty = Number(values[i][3] || 0);
+
+    catalog.push({
+      id: "m_" + (i + 1),
+      name: name,
+      price: price,
+      status: status === "Arsip" ? "Arsip" : "Aktif",
+      sold_qty: soldQty
+    });
+  }
+
+  return catalog;
+}
+
+/**
+ * Sinkronisasi perubahan menu dari App ke Kolom I:M dengan proteksi Soft-Archive & Rename Propagation
+ */
+function syncCatalogToSheet_(sheet, incomingProducts) {
+  const existingCatalog = readCatalogFromSheet_(sheet);
+  const salesCounts = getSalesCountByProductName_(sheet);
+
+  // 1. Jika ada menu yang namanya diedit di App (memiliki original_name != name),
+  // perbarui juga histori di Kolom B agar SUMIFS tidak pecah
+  incomingProducts.forEach(item => {
+    const oldName = String(item.original_name || "").trim();
+    const newName = String(item.name || "").trim();
+    if (oldName && newName && oldName !== newName) {
+      renameProductInSalesLog_(sheet, oldName, newName);
+      if (salesCounts[oldName]) {
+        salesCounts[newName] = (salesCounts[newName] || 0) + salesCounts[oldName];
+        delete salesCounts[oldName];
+      }
+    }
+  });
+
+  const finalCatalogMap = new Map();
+
+  // 2. Masukkan semua menu aktif yang dikirim dari App
+  incomingProducts.forEach(item => {
+    const name = String(item.name || "").trim();
+    if (!name) return;
+    finalCatalogMap.set(name.toLowerCase(), {
+      name: name,
+      price: Math.max(0, Number(item.price || 0)),
+      status: "Aktif"
+    });
+  });
+
+  // 3. Cek menu lama yang dihapus (✕) oleh user di App:
+  // - Jika sudah pernah terjual (salesCounts > 0) -> Pertahankan di Sheet sebagai "Arsip"
+  // - Jika belum pernah terjual (salesCounts == 0) -> Hapus bersih dari Sheet
+  existingCatalog.forEach(oldItem => {
+    const key = oldItem.name.toLowerCase();
+    if (!finalCatalogMap.has(key)) {
+      const sold = salesCounts[oldItem.name] || 0;
+      if (sold > 0) {
+        finalCatalogMap.set(key, {
+          name: oldItem.name,
+          price: oldItem.price,
+          status: "Arsip"
+        });
+      }
+    }
+  });
+
+  const mergedRows = Array.from(finalCatalogMap.values());
+  writeCatalogRowsToSheet_(sheet, mergedRows);
+
+  const refreshed = readCatalogFromSheet_(sheet);
+  return refreshed.filter(item => item.status !== "Arsip");
+}
+
+/**
+ * Menulis ulang tabel Katalog (Kolom I:M) beserta rumus SUMIFS per baris
+ */
+function writeCatalogRowsToSheet_(sheet, catalogItems) {
+  const clearRows = Math.max(sheet.getLastRow(), catalogItems.length + 5, 20);
+  sheet.getRange(2, 9, clearRows, 5).clearContent();
+
+  if (catalogItems.length === 0) return;
+
+  const dataRows = [];
+  const formulaRows = [];
+
+  for (let i = 0; i < catalogItems.length; i++) {
+    const rowNum = i + 2;
+    const item = catalogItems[i];
+    dataRows.push([item.name, item.price, item.status || "Aktif"]);
+    formulaRows.push([
+      `=IF(I${rowNum}="","",SUMIFS($C$2:$C$10000, $B$2:$B$10000, I${rowNum}))`,
+      `=IF(I${rowNum}="","",SUMIFS($E$2:$E$10000, $B$2:$B$10000, I${rowNum}))`
+    ]);
+  }
+
+  sheet.getRange(2, 9, dataRows.length, 3).setValues(dataRows);
+  sheet.getRange(2, 12, formulaRows.length, 2).setFormulas(formulaRows);
+}
+
+/**
+ * Menghitung jumlah penjualan tiap Nama Barang langsung dari Kolom B & C
+ */
+function getSalesCountByProductName_(sheet) {
+  const lastSalesRow = getFirstEmptySalesRow_(sheet) - 1;
+  const counts = {};
+  if (lastSalesRow < 2) return counts;
+
+  const data = sheet.getRange(2, 2, lastSalesRow - 1, 2).getValues();
+  for (let i = 0; i < data.length; i++) {
+    const name = String(data[i][0] || "").trim();
+    const qty = Number(data[i][1] || 0);
+    if (name) {
+      counts[name] = (counts[name] || 0) + qty;
+    }
+  }
+  return counts;
+}
+
+/**
+ * Memperbarui nama barang di Kolom B jika user mengedit nama menu di App
+ */
+function renameProductInSalesLog_(sheet, oldName, newName) {
+  const lastSalesRow = getFirstEmptySalesRow_(sheet) - 1;
+  if (lastSalesRow < 2) return;
+
+  const range = sheet.getRange(2, 2, lastSalesRow - 1, 1);
+  const values = range.getValues();
+  let changed = false;
+
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === oldName) {
+      values[i][0] = newName;
+      changed = true;
+    }
+  }
+  if (changed) range.setValues(values);
+}
+
+/**
+ * Jika ada transaksi masuk dengan menu baru yang belum ada di Kolom I, tambahkan otomatis
+ */
+function ensureItemsInCatalog_(sheet, items) {
+  const currentCatalog = readCatalogFromSheet_(sheet);
+  const existingMap = new Map(currentCatalog.map(c => [c.name.toLowerCase(), c]));
+  let modified = false;
+
+  items.forEach(item => {
+    const name = String(item.name || "").trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (!existingMap.has(key)) {
+      currentCatalog.push({
+        name: name,
+        price: Number(item.unit_price || 0),
+        status: "Aktif"
+      });
+      existingMap.set(key, true);
+      modified = true;
+    }
+  });
+
+  if (modified) {
+    writeCatalogRowsToSheet_(sheet, currentCatalog);
+  }
+}
+
+/**
+ * Mencari baris kosong pertama khusus pada Area 1 (Kolom B / Nama Barang)
+ * Tidak terpengaruh oleh panjang tabel Katalog di Kolom I:M
+ */
+function getFirstEmptySalesRow_(sheet) {
+  const maxRow = Math.max(sheet.getLastRow(), 2);
+  const colB = sheet.getRange(2, 2, maxRow, 1).getValues();
+  for (let i = 0; i < colB.length; i++) {
+    if (colB[i][0] === "" || colB[i][0] === null) {
+      return i + 2;
+    }
+  }
+  return maxRow + 2;
+}
+
+function savePhotoToDrive_(base64Data, mimeType, paymentMethod, orderId) {
+  const folders = DriveApp.getFoldersByName(FOLDER_NAME);
+  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(FOLDER_NAME);
+
+  const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
+  const decoded = Utilities.base64Decode(cleanBase64);
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
+  const fileName = `${stamp}_${paymentMethod}_${orderId || "POS"}.jpg`;
+
+  const blob = Utilities.newBlob(decoded, mimeType, fileName);
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
+
+function jsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}

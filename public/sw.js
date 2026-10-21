@@ -1,5 +1,5 @@
 // Danusan POS Service Worker (Network-First for instant updates)
-const CACHE_NAME = 'danusan-pos-v3';
+const CACHE_NAME = 'danusan-pos-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,9 @@ const STATIC_ASSETS = [
   './apple-touch-icon.png',
   './pwa-192x192.png',
   './pwa-512x512.png',
-  './pwa-maskable-512x512.png'
+  './pwa-maskable-512x512.png',
+  './qris-default.webp',
+  './qris-default.png'
 ];
 
 self.addEventListener('install', (event) => {

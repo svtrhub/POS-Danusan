@@ -1,29 +1,42 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { CheckCircle2, ShoppingBag } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 
-import { Product, QueuedOrder, DraftState, OrderItem } from './types';
+import { Product } from './types';
 import { Header } from './components/Header';
 import { ProductCard } from './components/ProductCard';
 import { PaymentDock } from './components/PaymentDock';
 import { SettingsModal } from './components/SettingsModal';
 import { PhotoModal } from './components/PhotoModal';
 import { PWAExplainModal } from './components/PWAExplainModal';
+import { QRISPullCard } from './components/QRISPullCard';
+import { TabletOrderPanel } from './components/TabletOrderPanel';
+import { TransactionHistoryModal } from './components/TransactionHistoryModal';
+import { CameraActionSheet } from './components/CameraActionSheet';
+
+import { useOrderSession } from './hooks/useOrderSession';
+import { useSyncEngine } from './hooks/useSyncEngine';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { DEFAULT_QRIS_DATA } from './assets/defaultQrisData';
+import { playSuccessSound } from './utils/sound';
+import { saveOrderToLocalHistory } from './utils/historyStorage';
 
 const DEFAULT_MENU: Product[] = [
-  { id: 'p1', name: 'Piscok', original_name: 'Piscok', price: 5000 },
+  { id: 'p1', name: 'Bomboloni', original_name: 'Bomboloni', price: 5000 },
   { id: 'p2', name: 'Risol', original_name: 'Risol', price: 6000 },
-  { id: 'p3', name: 'Risol Bundle', original_name: 'Risol Bundle', price: 15000 },
-  { id: 'p4', name: 'Es Teh', original_name: 'Es Teh', price: 5000 },
-  { id: 'p5', name: 'Es Kopi', original_name: 'Es Kopi', price: 12000 },
-  { id: 'p6', name: 'Tarot Reading', original_name: 'Tarot Reading', price: 10000 },
-  { id: 'p7', name: 'Es Degan', original_name: 'Es Degan', price: 10000 },
-  { id: 'p8', name: 'Tahu Bakso', original_name: 'Tahu Bakso', price: 5000 },
-  { id: 'p9', name: 'Air Mineral', original_name: 'Air Mineral', price: 3000 },
+  { id: 'p3', name: 'Es Teh', original_name: 'Es Teh', price: 5000 },
+  { id: 'p4', name: 'Tahu Bakso', original_name: 'Tahu Bakso', price: 5000 },
 ];
+
+const MENU_VERSION = 'v2_bomboloni';
 
 function loadSafeMenu(): Product[] {
   try {
+    const version = localStorage.getItem('POS_MENU_VER');
+    if (version !== MENU_VERSION) {
+      localStorage.setItem('POS_MENU_VER', MENU_VERSION);
+      localStorage.setItem('POS_MENU', JSON.stringify(DEFAULT_MENU));
+      return JSON.parse(JSON.stringify(DEFAULT_MENU));
+    }
     const parsed = JSON.parse(localStorage.getItem('POS_MENU') || 'null');
     if (Array.isArray(parsed) && parsed.length > 0) return parsed;
   } catch (_) {}
@@ -31,51 +44,39 @@ function loadSafeMenu(): Product[] {
   return JSON.parse(JSON.stringify(DEFAULT_MENU));
 }
 
-function loadSafeDraft(): DraftState {
-  try {
-    const parsed = JSON.parse(sessionStorage.getItem('POS_DRAFT') || 'null');
-    if (parsed && typeof parsed === 'object') {
-      return {
-        cart: parsed.cart || {},
-        discountEnabled: Boolean(parsed.discountEnabled),
-        discount: Number(parsed.discount) || 0,
-        payment: parsed.payment === 'Cash' ? 'Cash' : 'QRIS',
-        photoBase64: parsed.photoBase64 || '',
-      };
-    }
-  } catch (_) {}
-  return {
-    cart: {},
-    discountEnabled: false,
-    discount: 0,
-    payment: 'QRIS',
-    photoBase64: '',
-  };
-}
-
 export default function App() {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
 
-  // Core application states
+  // Menu catalog state
   const [products, setProducts] = useState<Product[]>(loadSafeMenu);
-  const [apiUrl, setApiUrl] = useState<string>(() => localStorage.getItem('POS_API_URL') || '');
-  const [queue, setQueue] = useState<QueuedOrder[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('POS_QUEUE') || '[]');
-    } catch (_) {
-      return [];
-    }
-  });
-  const [draft, setDraft] = useState<DraftState>(loadSafeDraft);
 
-  // Sync state
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [hasSyncError, setHasSyncError] = useState<boolean>(false);
+  // Deep architectural modules: OrderSession & SyncEngine
+  const orderSession = useOrderSession(products);
+  const sync = useSyncEngine();
 
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
+  const [isRetakeActionOpen, setIsRetakeActionOpen] = useState(false);
   const [isPWAExplainOpen, setIsPWAExplainOpen] = useState(false);
+
+  // Custom QRIS image state (Baked-in official default on any new device)
+  const [customQrisImage, setCustomQrisImage] = useState<string>(
+    () => localStorage.getItem('POS_QRIS_IMAGE') || DEFAULT_QRIS_DATA
+  );
+
+  const handleSaveQrisImage = (base64: string) => {
+    setCustomQrisImage(base64);
+    localStorage.setItem('POS_QRIS_IMAGE', base64);
+    showToast('Gambar QRIS kustom tersimpan');
+  };
+
+  const handleResetQrisImage = () => {
+    localStorage.removeItem('POS_QRIS_IMAGE');
+    setCustomQrisImage(DEFAULT_QRIS_DATA);
+    showToast('Kembali ke QRIS bawaan');
+  };
 
   // Toast feedback
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -87,331 +88,210 @@ export default function App() {
     }, 2000);
   }, []);
 
-  // Sync draft to sessionStorage
-  useEffect(() => {
-    try {
-      sessionStorage.setItem('POS_DRAFT', JSON.stringify(draft));
-    } catch (_) {}
-  }, [draft]);
-
-  // Sync queue to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('POS_QUEUE', JSON.stringify(queue));
-    } catch (_) {}
-  }, [queue]);
-
-  // Background queue sync process
-  const processQueue = useCallback(async () => {
-    const currentQueue: QueuedOrder[] = JSON.parse(localStorage.getItem('POS_QUEUE') || '[]');
-    const currentUrl = localStorage.getItem('POS_API_URL') || '';
-
-    if (!currentUrl || !currentQueue.length || isSyncing) {
-      return;
-    }
-
-    setIsSyncing(true);
-    setHasSyncError(false);
-
-    let activeQueue: QueuedOrder[] = [...currentQueue];
-
-    while (activeQueue.length > 0) {
-      const itemToSync = activeQueue[0];
-      try {
-        const res = await fetch(currentUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(itemToSync),
-        });
-        const data = await res.json();
-        if (data.status === 'ok') {
-          activeQueue.shift();
-          setQueue([...activeQueue]);
-          localStorage.setItem('POS_QUEUE', JSON.stringify(activeQueue));
-        } else {
-          throw new Error('Google Apps Script status not ok');
-        }
-      } catch (err) {
-        console.warn('Queue sync error:', err);
-        setHasSyncError(true);
-        setIsSyncing(false);
-        return;
-      }
-    }
-
-    setIsSyncing(false);
-    setHasSyncError(false);
-    showToast('✓ Semua transaksi tersinkron ke Sheet');
-  }, [isSyncing, showToast]);
-
-  // Auto-sync on mount if queue exists
-  useEffect(() => {
-    if (queue.length > 0 && apiUrl) {
-      processQueue();
-    }
-  }, []);
-
-  // Totals calculations
-  const { totalQty, grossTotal, netTotal } = useMemo(() => {
-    let qty = 0;
-    let gross = 0;
-    products.forEach((p) => {
-      const count = draft.cart[p.id] || 0;
-      if (count > 0) {
-        qty += count;
-        gross += count * p.price;
-      }
-    });
-    const disc = draft.discountEnabled ? draft.discount || 0 : 0;
-    const net = Math.max(0, gross - disc);
-    return { totalQty: qty, grossTotal: gross, netTotal: net };
-  }, [products, draft.cart, draft.discountEnabled, draft.discount]);
-
-  // Cart operations
-  const handleIncrement = (productId: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      cart: {
-        ...prev.cart,
-        [productId]: (prev.cart[productId] || 0) + 1,
-      },
-    }));
-  };
-
-  const handleDecrement = (productId: string) => {
-    setDraft((prev) => {
-      const cur = prev.cart[productId] || 0;
-      const nextCart = { ...prev.cart };
-      if (cur <= 1) {
-        delete nextCart[productId];
-      } else {
-        nextCart[productId] = cur - 1;
-      }
-      return { ...prev, cart: nextCart };
-    });
-  };
-
-  const handleResetCart = () => {
-    setDraft((prev) => ({
-      cart: {},
-      discountEnabled: false,
-      discount: 0,
-      payment: prev.payment,
-      photoBase64: '',
-    }));
-    showToast('Keranjang direset');
-  };
-
-  // Submit order handler (EXACT backend format)
+  // Submit order handler
   const handleSubmitOrder = () => {
-    const items: OrderItem[] = [];
-    products.forEach((p) => {
-      const q = draft.cart[p.id] || 0;
-      if (q > 0) {
-        items.push({ name: p.name, qty: q, unit_price: p.price });
-      }
-    });
+    const orderPayload = orderSession.buildOrderPayload();
+    if (!orderPayload) return;
 
-    if (!items.length || !draft.photoBase64) {
-      return;
-    }
-
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const timestamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
-      d.getHours()
-    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-
-    const orderId = `${d.getTime().toString(36).toUpperCase()}-${Math.random()
-      .toString(36)
-      .substring(2, 5)
-      .toUpperCase()}`;
-
-    const newOrder: QueuedOrder = {
-      action: 'submitOrder',
-      order_id: orderId,
-      timestamp,
-      payment_method: draft.payment,
-      discount_total: draft.discountEnabled ? draft.discount || 0 : 0,
-      items,
-      photo_base64: draft.photoBase64,
-      photo_mime: 'image/jpeg',
-    };
-
-    // Add to queue
-    const updatedQueue = [...queue, newOrder];
-    setQueue(updatedQueue);
-    localStorage.setItem('POS_QUEUE', JSON.stringify(updatedQueue));
-
-    // Clear cart
-    setDraft({
-      cart: {},
-      discountEnabled: false,
-      discount: 0,
-      payment: draft.payment,
-      photoBase64: '',
-    });
-
-    showToast(apiUrl ? '✓ Pesanan Berhasil Disimpan!' : '✓ Masuk Antrean (Atur URL di ⚙️)');
-
-    // Trigger queue sync
-    setTimeout(() => {
-      processQueue();
-    }, 100);
+    playSuccessSound();
+    saveOrderToLocalHistory(orderPayload);
+    sync.enqueue(orderPayload);
+    orderSession.resetAfterSubmit();
+    showToast(sync.apiUrl ? '✓ Pesanan Berhasil Disimpan!' : '✓ Masuk Antrean (Atur URL di Menu)');
   };
 
-  // Settings Save Handler (EXACT saveProducts format)
+  // Settings Save Handler
   const handleSaveSettings = async (newUrl: string, updatedProducts: Product[]) => {
-    setApiUrl(newUrl);
-    localStorage.setItem('POS_API_URL', newUrl);
+    sync.setApiUrl(newUrl);
     setProducts(updatedProducts);
     localStorage.setItem('POS_MENU', JSON.stringify(updatedProducts));
 
     if (newUrl) {
-      try {
-        const res = await fetch(newUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'saveProducts', products: updatedProducts }),
-        });
-        const data = await res.json();
-        if (data.status === 'ok' && Array.isArray(data.products) && data.products.length > 0) {
-          const formatted = data.products.map((p: Product) => ({ ...p, original_name: p.name }));
-          setProducts(formatted);
-          localStorage.setItem('POS_MENU', JSON.stringify(formatted));
-          showToast('✓ Menu Berhasil Disinkronkan ke Sheet');
-        }
-      } catch (err) {
-        console.warn('Sync products error:', err);
+      const synced = await sync.saveProductsToSheet(newUrl, updatedProducts);
+      if (synced && synced.length > 0) {
+        setProducts(synced);
+        localStorage.setItem('POS_MENU', JSON.stringify(synced));
+        showToast('✓ Menu Berhasil Disinkronkan ke Sheet');
       }
-      processQueue();
+      sync.processQueue();
     }
   };
 
-  // Pull Sheet Handler (EXACT getConfig format)
+  // Pull Sheet Handler
   const handlePullSheet = async (targetUrl?: string): Promise<Product[] | null> => {
-    const url = targetUrl || apiUrl;
-    if (!url) return null;
-    const res = await fetch(`${url}?action=getConfig`);
-    const data = await res.json();
-    if (Array.isArray(data.products) && data.products.length > 0) {
-      const formatted = data.products.map((p: Product) => ({ ...p, original_name: p.name }));
-      setProducts(formatted);
-      localStorage.setItem('POS_MENU', JSON.stringify(formatted));
-      return formatted;
+    const fetched = await sync.fetchConfigFromSheet(targetUrl);
+    if (fetched && fetched.length > 0) {
+      setProducts(fetched);
+      localStorage.setItem('POS_MENU', JSON.stringify(fetched));
+      return fetched;
     }
     return null;
   };
 
   const handleSyncPillClick = () => {
-    if (!apiUrl) {
+    if (!sync.apiUrl) {
       setIsSettingsOpen(true);
     } else {
-      processQueue();
+      sync.processQueue();
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] flex flex-col pt-16 pb-60 font-sans select-none overscroll-none">
+    <div className="h-screen h-[100dvh] w-full bg-[#F2F2F7] flex flex-col font-sans select-none overflow-hidden overscroll-none">
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-4 py-2 rounded-full text-xs font-bold shadow-xl border border-white/10 flex items-center gap-1.5 animate-fade-in">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-4 py-2 rounded-full text-xs font-bold shadow-xl border border-white/10 flex items-center gap-1.5 animate-fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMsg}</span>
         </div>
       )}
 
-      {/* Header */}
+      {/* Header (Exact 64px height) */}
       <Header
-        queueLength={queue.length}
-        isSyncing={isSyncing}
-        apiUrl={apiUrl}
-        hasSyncError={hasSyncError}
+        queueLength={sync.queueLength}
+        isSyncing={sync.isSyncing}
+        apiUrl={sync.apiUrl}
+        hasSyncError={sync.hasSyncError}
         isInstallable={isInstallable}
         isInstalled={isInstalled}
         onSyncClick={handleSyncPillClick}
-        onResetCart={handleResetCart}
+        onResetCart={() => {
+          orderSession.clearCart();
+          showToast('Keranjang direset');
+        }}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenPWAInfo={() => setIsPWAExplainOpen(true)}
       />
 
-      {/* Minimalist Product Grid */}
-      <main className="w-full max-w-xl mx-auto px-3.5 pt-1">
-        <div className="grid grid-cols-2 gap-2.5">
-          {products.map((prod) => (
-            <ProductCard
-              key={prod.id}
-              product={prod}
-              quantity={draft.cart[prod.id] || 0}
-              onIncrement={handleIncrement}
-              onDecrement={handleDecrement}
-            />
-          ))}
-        </div>
-      </main>
+      {/* Pull-down QRIS Payment Card */}
+      <QRISPullCard
+        customQrisImage={customQrisImage}
+        onSaveQrisImage={handleSaveQrisImage}
+      />
 
-      {/* Bottom Sticky Payment Dock */}
+      {/* Content Area: Dynamic viewport height constraint */}
+      <div className="flex-1 min-h-0 h-[calc(100dvh-64px)] max-h-[calc(100dvh-64px)] w-full max-w-7xl mx-auto flex flex-col md:flex-row overflow-hidden">
+        {/* Left Side: Product Catalog (Scrollable grid taking remaining space) */}
+        <main className="flex-1 grow min-w-0 w-full h-full overflow-y-auto overscroll-contain px-3 sm:px-4 md:px-6 pt-2.5 sm:pt-3 md:pt-4 pb-60 md:pb-6 min-h-0">
+          <div className="w-full max-w-xl md:max-w-none mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-2.5 md:gap-3.5">
+              {products.map((prod) => (
+                <ProductCard
+                  key={prod.id}
+                  product={prod}
+                  quantity={orderSession.draft.cart[prod.id] || 0}
+                  onIncrement={orderSession.increment}
+                  onDecrement={orderSession.decrement}
+                />
+              ))}
+            </div>
+          </div>
+        </main>
+
+        {/* Right Side: iPad / Tablet / Desktop Split Checkout Panel (w-[380px] h-full overflow-y-auto) */}
+        <TabletOrderPanel
+          products={products}
+          cart={orderSession.draft.cart}
+          totalQty={orderSession.totalQty}
+          netTotal={orderSession.netTotal}
+          paymentMethod={orderSession.draft.payment}
+          photoBase64={orderSession.draft.photoBase64}
+          discountEnabled={orderSession.draft.discountEnabled}
+          discount={orderSession.draft.discount}
+          onIncrement={orderSession.increment}
+          onDecrement={orderSession.decrement}
+          onClearCart={() => {
+            orderSession.clearCart();
+            showToast('Keranjang direset');
+          }}
+          onPaymentChange={orderSession.setPaymentMethod}
+          onPhotoCaptured={orderSession.setPhotoBase64}
+          onViewPhoto={() => setIsPhotoOpen(true)}
+          onToggleDiscount={orderSession.toggleDiscount}
+          onSelectDiscountPreset={orderSession.setDiscountAmount}
+          onCustomDiscountChange={orderSession.setDiscountAmount}
+          onSubmit={handleSubmitOrder}
+        />
+      </div>
+
+      {/* Bottom Sticky Payment Dock (Mobile-only: md:hidden) */}
       <PaymentDock
-        totalQty={totalQty}
-        netTotal={netTotal}
-        paymentMethod={draft.payment}
-        photoBase64={draft.photoBase64}
-        discountEnabled={draft.discountEnabled}
-        discount={draft.discount}
-        onPaymentChange={(method) => setDraft((p) => ({ ...p, payment: method }))}
-        onPhotoCaptured={(base64) => setDraft((p) => ({ ...p, photoBase64: base64 }))}
+        totalQty={orderSession.totalQty}
+        netTotal={orderSession.netTotal}
+        paymentMethod={orderSession.draft.payment}
+        photoBase64={orderSession.draft.photoBase64}
+        discountEnabled={orderSession.draft.discountEnabled}
+        discount={orderSession.draft.discount}
+        onPaymentChange={orderSession.setPaymentMethod}
+        onPhotoCaptured={orderSession.setPhotoBase64}
         onViewPhoto={() => setIsPhotoOpen(true)}
-        onToggleDiscount={(enabled) =>
-          setDraft((p) => ({
-            ...p,
-            discountEnabled: enabled,
-            discount: enabled ? p.discount || 1000 : 0,
-          }))
-        }
-        onSelectDiscountPreset={(preset) =>
-          setDraft((p) => ({ ...p, discountEnabled: true, discount: preset }))
-        }
-        onCustomDiscountChange={(custom) =>
-          setDraft((p) => ({ ...p, discountEnabled: true, discount: custom }))
-        }
+        onToggleDiscount={orderSession.toggleDiscount}
+        onSelectDiscountPreset={orderSession.setDiscountAmount}
+        onCustomDiscountChange={orderSession.setDiscountAmount}
         onSubmit={handleSubmitOrder}
       />
 
       {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        apiUrl={apiUrl}
+        apiUrl={sync.apiUrl}
         products={products}
+        customQrisImage={customQrisImage}
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onPullSheet={handlePullSheet}
+        onSaveQrisImage={handleSaveQrisImage}
+        onResetQrisImage={handleResetQrisImage}
+      />
+
+      {/* Transaction History Modal */}
+      <TransactionHistoryModal
+        isOpen={isHistoryOpen}
+        apiUrl={sync.apiUrl}
+        onClose={() => setIsHistoryOpen(false)}
+        onFetchHistory={sync.fetchHistoryFromSheet}
+        onViewPhoto={(photo) => {
+          orderSession.setPhotoBase64(photo);
+          setIsPhotoOpen(true);
+        }}
       />
 
       {/* Photo Preview Modal */}
       <PhotoModal
         isOpen={isPhotoOpen}
-        photoBase64={draft.photoBase64}
+        photoBase64={orderSession.draft.photoBase64}
         onClose={() => setIsPhotoOpen(false)}
         onRetake={() => {
-          setDraft((p) => ({ ...p, photoBase64: '' }));
-          setTimeout(() => {
-            const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-            if (fileInput) fileInput.click();
-          }, 100);
+          setIsPhotoOpen(false);
+          setIsRetakeActionOpen(true);
         }}
         onDelete={() => {
-          setDraft((p) => ({ ...p, photoBase64: '' }));
-          showToast('Foto dihapus');
+          orderSession.setPhotoBase64('');
+          setIsPhotoOpen(false);
+          showToast('Foto bukti dihapus');
         }}
       />
 
-      {/* PWA Explanation & Guide Modal */}
+      {/* Retake Camera & Gallery Action Sheet */}
+      <CameraActionSheet
+        isOpen={isRetakeActionOpen}
+        onClose={() => setIsRetakeActionOpen(false)}
+        onPhotoCaptured={(base64) => {
+          orderSession.setPhotoBase64(base64);
+          showToast('Foto bukti diperbarui');
+        }}
+        title="Ganti Bukti Pembayaran"
+      />
+
+      {/* PWA Information Modal */}
       <PWAExplainModal
         isOpen={isPWAExplainOpen}
         isInstallable={isInstallable}
         isInstalled={isInstalled}
         isIOS={isIOS}
-        onClose={() => setIsPWAExplainOpen(false)}
         onInstall={install}
+        onClose={() => setIsPWAExplainOpen(false)}
       />
     </div>
   );

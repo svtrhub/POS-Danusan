@@ -39,4 +39,7 @@ export interface SalesHistoryItem {
   net_total: number;
   items_count: number;
   items: OrderItem[];
+  photo_url?: string;
+  photo_base64?: string;
+  is_local_pending?: boolean;
 }

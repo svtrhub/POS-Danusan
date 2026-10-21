@@ -1,6 +1,6 @@
 {
-  "summary": "Rencana implementasi dukungan upload galeri dan kamera melalui Lembar Pemilih Native OS: menghapus atribut capture=\"environment\" pada input file, menyesuaikan label tombol bukti pembayaran, dan memastikan kompresi gambar tetap optimal tanpa mengubah integrasi Google Apps Script.",
-  "updatedAt": "2026-10-17T14:41:16.078630518Z",
+  "summary": "Rencana implementasi penanaman aset QRIS default permanen ke dalam basis kode aplikasi POS Danusan agar langsung tersedia di semua perangkat baru tanpa perlu input manual.",
+  "updatedAt": "2026-10-20T10:29:40.323709004Z",
   "requestFeedback": true,
   "userFacing": true
 }

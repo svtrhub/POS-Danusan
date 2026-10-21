@@ -1,56 +1,101 @@
-# Rencana Implementasi: Lembar Pemilih Native OS (Kamera & Galeri)
+# Penanaman QRIS Default Permanen Multi-Perangkat (Offline-First)
 
-Penerapan alur pemilihan bukti pembayaran melalui **Lembar Pemilih Native OS** (*Native System Media Picker*) agar kasir leluasa memilih antara memotret langsung dengan kamera atau mengunggah tangkapan layar (*screenshot*) / foto dari galeri HP, tanpa menambah *clutter* dan tanpa mengganggu backend Google Apps Script.
+Memastikan gambar QRIS resmi bawaan ("MANAGEMENT GATHERING 2026 - FOOD") tertanam secara permanen dan kokoh ke dalam aset *bundle* aplikasi, sehingga setiap kali aplikasi POS dibuka di perangkat atau peramban baru, QRIS langsung aktif dan siap digunakan kasir tanpa perlu input manual.
 
----
-
-## User Review & Critical Decisions
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Keputusan Terkonfirmasi dari Pengguna:**
-> - **Alur Pilihan**: **Lembar Pemilih Native OS** (otomatis memunculkan opsi Kamera & Galeri/Pustaka Foto bawaan sistem operasi Android & iOS).
-> - **Integritas Backend**: Seluruh mekanisme kompresi kanvas (max 1000px, 0.65 JPEG), format payload `submitOrder`, dan antrean lokal `POS_QUEUE` tetap berjalan 100% normal.
+> **Keputusan Terkonfirmasi (Fase 1 Clarification)**:
+> 1. **Sumber QRIS**: Menggunakan gambar QRIS resmi yang sudah ada di sistem ("MANAGEMENT GATHERING 2026 - FOOD", NMID: ID1026614259186).
+> 2. **Mekanisme Distribusi**: Ditanam langsung (*hard-bundled*) ke dalam aset aplikasi agar langsung tersedia sejak *first paint* di perangkat baru dan 100% siap digunakan secara *offline*.
+> 3. **Fleksibilitas Pengguna**: Fitur kustomisasi di Pengaturan tetap dipertahankan; jika kasir mengunggah QRIS baru, sistem akan menggunakannya, dan jika menekan "Kembalikan ke Bawaan", sistem otomatis kembali ke QRIS resmi bawaan ini.
 
 ---
 
-## 1. Analisis & Rincian Perubahan
+### 1. Overview & Core Concept
 
-### A. Penghapusan Atribut `capture="environment"`
-- **Sebelum**:  
-  `<input type="file" accept="image/*" capture="environment" />`  
-  Atribut `capture="environment"` mematikan dialog pemilih file dan memaksa browser langsung meluncurkan aplikasi kamera belakang ponsel.
-- **Sesudah**:  
-  `<input type="file" accept="image/*" />`  
-  Dengan hanya menggunakan `accept="image/*"` standar:
-  - **Di Android**: Browser otomatis membuka lembar sistem dengan pilihan **Kamera** (foto langsung) dan **File / Media Picker / Galeri** (unggah foto/tangkapan layar).
-  - **Di iOS Safari**: Browser otomatis menampilkan Action Sheet native dengan pilihan **"Ambil Foto" (Take Photo)**, **"Pustaka Foto" (Photo Library)**, dan **"Pilih File" (Choose File)**.
-
-### B. Penyelarasan Label Tombol (*Clarity & Microcopy*)
-- Tombol aksi di dock disesuaikan microcopy-nya:
-  - Sebelum: `Foto QRIS` / `Foto Tunai` (mengindikasikan hanya bisa foto kamera).
-  - Sesudah: `Bukti QRIS` / `Bukti Tunai` (secara psikologis mengindikasikan kasir dapat melampirkan foto struk fisik maupun tangkapan layar dari galeri).
-
-### C. Jaminan Kompresi Gambar Galeri
-- Gambar yang diunggah dari galeri (misalnya foto resolusi tinggi 12MP atau screenshot layar berukuran besar) tetap diproses melalui fungsi kanvas HTML5:
-  - Otomatis di-downscale ke lebar maksimum 1000px.
-  - Otomatis dikompresi ke JPEG kualitas 0.65.
-  - Ukuran payload tetap ringan (<150KB) sehingga pengiriman ke Google Apps Script tetap instan dan tidak membebani kuota Sheet.
+- **What It Does**: Memecahkan masalah ketergantungan `localStorage` lokal pada perangkat baru. Dengan menanamkan aset gambar QRIS bawaan sebagai import statis modul TypeScript/Vite dan fallback berlapis (*base64 in-memory data URL* + *bundled WebP/PNG assets*), perangkat baru yang belum pernah membuka POS Danusan akan langsung menampilkan QRIS resmi saat kasir menarik laci QRIS atau saat pelanggan ingin membayar.
+- **Target Audience / Persona**: Panitia dan kasir danusan yang membuka aplikasi di ponsel masing-masing (HP baru, ganti perangkat, mode *incognito*, atau setelah *clear cache*).
+- **Key Value**: Nol konfigurasi awal (*zero setup*) untuk kasir baru; QRIS selalu muncul instan, tidak pernah rusak/blank (*zero broken images*), dan tetap berfungsi saat sinyal internet minim.
 
 ---
 
-## 2. File yang Terlibat
+### 2. User Experience & Visual Design
 
-1. `src/components/PaymentDock.tsx`:
-   - Hapus atribut `capture="environment"` pada input file utama.
-   - Perbarui label tombol menjadi `Bukti QRIS` / `Bukti Tunai`.
-2. `src/components/PhotoModal.tsx`:
-   - Pastikan alur foto ulang (*retake*) juga membuka lembar pemilih native yang sama.
+- **Alur Perangkat Baru (First-Time User Flow)**:
+  1. Kasir membuka tautan aplikasi POS Danusan di HP baru (Chrome / Safari / PWA).
+  2. Saat pelanggan hendak membayar via QRIS, kasir menggeser tab "Tarik QRIS" di bawah header atau mengetuk kartu QRIS di panel kasir.
+  3. Lembar QRIS terbuka mulus menampilkan kode QRIS resmi "MANAGEMENT GATHERING 2026 - FOOD" dengan status badge "QRIS Pembayaran Resmi" berwarna hijau aktif.
+  4. Tidak ada lagi layar kosong atau kewajiban masuk ke menu Pengaturan terlebih dahulu.
+
+- **Alur Kustomisasi & Reset (Settings Flow)**:
+  1. Di *SettingsModal*, pratinjau QRIS langsung menampilkan gambar default resmi.
+  2. Tombol "Ganti Gambar QRIS" tetap tersedia bagi yang ingin mengganti gambar acara lain.
+  3. Tombol "Kembalikan ke Bawaan" mengembalikan QRIS ke aset resmi bawaan dan membersihkan *override* lokal.
+
+- **Visual Identity & Theme**:
+  - Mengikuti Apple Minimalist White & iOS System Palette (`#007AFF`, `#F2F2F7`, `#1C1C1E`).
+  - Laci QRIS bersih dengan bayangan halus, batas hairline tipis, dan *card overlay* berbingkai membulat 24px (`rounded-3xl`).
 
 ---
 
-## 3. Verification & Testing Plan
+### 3. Key Product Decisions & Trade-Offs
 
-1. **Verifikasi Lembar Native**: Memastikan saat tombol bukti diketuk, browser memunculkan pilihan kamera dan galeri secara bersamaan.
-2. **Verifikasi Upload Tangkapan Layar**: Memilih gambar dari album/galeri dan memastikan gambar tampil di thumbnail pratinjau serta dapat dibuka di modal pratinjau.
-3. **Verifikasi Kompresi & Payload**: Memastikan `photo_base64` ter-generate valid dan pesanan berhasil masuk ke antrean `POS_QUEUE`.
-4. **Verifikasi Build**: Menjalankan `compile_applet` dan `lint_applet` untuk menjamin 0 error.
+- **Keputusan 1: Format & Strategi Penanaman Aset**:
+  - *Pendekatan*: Menyatukan referensi QRIS bawaan melalui file data konstan TypeScript (`src/assets/defaultQrisData.ts` dan `src/assets/defaultQris.ts`) yang diimpor langsung oleh React komponen, dilengkapi dengan aset statis di direktori `public/` sebagai cadangan URL web.
+  - *Alasan*: Import modul TypeScript di-bundle langsung oleh Vite ke dalam file JavaScript klien. Artinya, gambar QRIS akan terunduh bersama kode utama aplikasi; browser tidak perlu melakukan request HTTP tambahan yang rentan gagal atau lambat di jaringan seluler lemah.
+  - *Alternatif yang Ditinggalkan*: Hanya mengandalkan request API `/api/save-default-qris` (ditinggalkan karena aplikasi adalah SPA statis tanpa backend server Express aktif di mode dev/preview).
+
+- **Keputusan 2: Pembersihan MIME-Type & Header Gambar**:
+  - *Pendekatan*: Memperbaiki ketidaksesuaian MIME-type pada `public/qris-default.webp` (yang sebelumnya berisi format JPEG) menjadi WebP valid dan JPEG valid terpisah, serta memastikan data URL memiliki header `data:image/jpeg;base64,...` yang kompatibel dengan WebKit Safari dan Chromium Android.
+  - *Alasan*: Mencegah decode error pada browser Safari iOS saat membuka gambar statis.
+
+- **Keputusan 3: Hierarchy Fallback Multi-Lapisan**:
+  - *Pendekatan*: Mengatur urutan *fallback* di `App.tsx`, `QRISPullCard.tsx`, dan `SettingsModal.tsx`:
+    1. Kustom QRIS pengguna dari `localStorage` (jika ada).
+    2. Data URL statis bawaan `DEFAULT_QRIS_DATA` (tersedia seketika di memori, zero HTTP request).
+    3. Import aset bawaan bundler (`defaultQrisWebp` / `defaultQrisPng`).
+    4. Path statis `/qris-default.webp` dari folder publik.
+  - *Alasan*: Menjamin keandalan 100% tanpa celah gambar blank di semua kondisi jaringan dan tipe peramban.
+
+---
+
+### 4. Technical Architecture & Data Strategy
+
+#### Diagram Arsitektur Distribusi QRIS
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Aplikasi POS Danusan                     │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+            ┌──────────────────┴──────────────────┐
+            ▼                                     ▼
+┌───────────────────────┐             ┌───────────────────────┐
+│     Perangkat Lama    │             │    Perangkat Baru     │
+│   (Ada LocalStorage)  │             │ (LocalStorage Kosong) │
+└───────────┬───────────┘             └───────────┬───────────┘
+            │                                     │
+            │ POS_QRIS_IMAGE                      │ Fallback Otomatis
+            ▼                                     ▼
+┌───────────────────────┐             ┌───────────────────────┐
+│   QRIS Kustom Kasir   │             │  DEFAULT_QRIS_DATA    │
+│  (Jika Pernah Diubah) │             │ (Embedded Base64 TS)  │
+└───────────────────────┘             └───────────┬───────────┘
+            │                                     │
+            └──────────────────┬──────────────────┘
+                               ▼
+            ┌─────────────────────────────────────┐
+            │         Tampilan QRIS Aktif         │
+            │      - Laci Tarik (QRISPullCard)    │
+            │      - Pratinjau di SettingsModal   │
+            │      - Panel Split iPad             │
+            └─────────────────────────────────────┘
+```
+
+#### Komponen yang Akan Diperbarui:
+1. `src/assets/defaultQrisData.ts`: Memastikan string base64 QRIS resmi bersih, valid, dan langsung di-export.
+2. `src/assets/defaultQris.ts`: Menyatukan ekspor modul statis sebagai sumber kebenaran tunggal (*single source of truth*).
+3. `src/App.tsx`: Menginisialisasi state `customQrisImage` dengan prioritas bawaan yang aman sehingga saat pertama kali dibuka di perangkat baru, state langsung terisi `DEFAULT_QRIS_DATA` tanpa nilai kosong.
+4. `src/components/QRISPullCard.tsx`: Menyempurnakan fallback sources dan event handler agar selalu merender gambar default jika pengguna belum mengunggah gambar kustom.
+5. `src/components/SettingsModal.tsx`: Menjamin pratinjau QRIS di pengaturan selalu menampilkan gambar resmi bawaan jika belum ada gambar kustom.

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture Review &amp; Deepening Opportunities — POS Danusan</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased font-sans p-6 sm:p-10 max-w-6xl mx-auto space-y-10">
+
+  <!-- Header Section -->
+  <header class="border-b border-slate-200 pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div>
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 mb-2">
+        <span>Architecture Review</span>
+        <span>•</span>
+        <span>POS Danusan Codebase</span>
+      </div>
+      <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">
+        Codebase Architecture &amp; Deepening Opportunities
+      </h1>
+      <p class="text-sm text-slate-500 mt-1 max-w-2xl">
+        Identifying shallow modules, leaking seams, and high-leverage refactoring opportunities to improve AI-navigability and test surface.
+      </p>
+    </div>
+    <div class="text-right text-xs text-slate-400 font-mono">
+      Timestamp: 1792414004
+    </div>
+  </header>
+
+  <!-- Executive Summary Grid -->
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Scope Scanned</div>
+      <div class="text-2xl font-black text-slate-800">17 Source Files</div>
+      <p class="text-xs text-slate-500 mt-1">Full review of App.tsx, checkout docks, sync queue, and media pipelines.</p>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Primary Friction</div>
+      <div class="text-2xl font-black text-amber-600">Shallow God-Component</div>
+      <p class="text-xs text-slate-500 mt-1">App.tsx orchestrates state, pricing math, network sync, and layout in 500+ lines.</p>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Deepening Candidates</div>
+      <div class="text-2xl font-black text-blue-600">3 Candidates</div>
+      <p class="text-xs text-slate-500 mt-1">1 Strong (Order Intake), 1 Strong (Sync Queue), 1 Worth Exploring (Media Intake).</p>
+    </div>
+  </section>
+
+  <!-- Candidates Container -->
+  <main class="space-y-8">
+
+    <!-- Candidate 1 -->
+    <article class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-6 sm:p-8 space-y-4 border-b border-slate-100">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800">
+            Candidate 1 — Strong Recommendation
+          </span>
+          <div class="text-xs font-mono text-slate-500">
+            Involves: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">src/App.tsx</code>, <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">TabletOrderPanel.tsx</code>, <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">PaymentDock.tsx</code>
+          </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-slate-900">
+          Deepen Order Intake &amp; Cart State into an Autonomous <code class="text-blue-600">OrderSession</code> Module
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">The Problem (Friction &amp; Shallowness)</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              Order draft state is currently scattered across <code class="text-xs font-mono bg-slate-100 px-1 rounded">App.tsx</code>: product item dictionaries, quantity mutation callbacks, line-subtotal calculations, discount deductions, validation rules, and haptics. <code class="text-xs font-mono bg-slate-100 px-1 rounded">App.tsx</code> must pass 15+ individual props down to <code class="text-xs font-mono bg-slate-100 px-1 rounded">TabletOrderPanel</code> and <code class="text-xs font-mono bg-slate-100 px-1 rounded">PaymentDock</code>.
+            </p>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              <strong>Deletion Test:</strong> If you delete the 15+ props in <code class="text-xs font-mono bg-slate-100 px-1 rounded">App.tsx</code>, you don't delete complexity—you just scatter cart math across UI components.
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">The Solution &amp; Leverage</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              Create a deep <code class="text-xs font-mono bg-slate-100 px-1 rounded font-bold">OrderSession</code> module. The interface is small and high-leverage: <code class="text-xs font-mono bg-slate-100 px-1 rounded">add(id)</code>, <code class="text-xs font-mono bg-slate-100 px-1 rounded">remove(id)</code>, <code class="text-xs font-mono bg-slate-100 px-1 rounded">setDiscount(n)</code>, <code class="text-xs font-mono bg-slate-100 px-1 rounded">commit()</code>, and <code class="text-xs font-mono bg-slate-100 px-1 rounded">summary</code>.
+            </p>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              <strong>Benefits:</strong> Perfect locality for pricing, validation, and discount capping. Cart logic becomes 100% testable in pure unit tests without mounting any React components or browser DOM.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Before / After Diagram -->
+      <div class="p-6 sm:p-8 bg-slate-50/70">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Structural Comparison</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white p-4 rounded-2xl border border-slate-200">
+            <div class="text-xs font-bold text-rose-600 mb-2">Before: Shallow Seams &amp; Prop Drilling</div>
+            <div class="mermaid">
+graph TD
+  App[App.tsx God-Component] -->|15+ loose props| Tablet[TabletOrderPanel.tsx]
+  App -->|15+ loose props| Mobile[PaymentDock.tsx]
+  App -->|cart state, math, discount| App
+  App -->|haptics, sound, validation| App
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200">
+            <div class="text-xs font-bold text-emerald-600 mb-2">After: Deep OrderSession Seam</div>
+            <div class="mermaid">
+graph TD
+  Session[OrderSession Module] -->|Simple Snapshot| App[App.tsx Layout Only]
+  Session -->|addItem, removeItem, commit| App
+  App -->|Clean Order Context| Tablet[TabletOrderPanel.tsx]
+  App -->|Clean Order Context| Mobile[PaymentDock.tsx]
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- Candidate 2 -->
+    <article class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-6 sm:p-8 space-y-4 border-b border-slate-100">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-800">
+            Candidate 2 — Strong Recommendation
+          </span>
+          <div class="text-xs font-mono text-slate-500">
+            Involves: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">src/App.tsx</code>, <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">Header.tsx</code>, <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">types.ts</code>
+          </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-slate-900">
+          Encapsulate Offline Queue &amp; Google Sheets Protocol in a Deep <code class="text-blue-600">SyncEngine</code>
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">The Problem (Friction &amp; Leaking Seam)</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              Google Sheets Apps Script sync logic, exponential retry timers, local storage queue serialisation, and network failure fallbacks are implemented directly inside React <code class="text-xs font-mono bg-slate-100 px-1 rounded">useEffect</code> and state variables in <code class="text-xs font-mono bg-slate-100 px-1 rounded">App.tsx</code>.
+            </p>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              If network connectivity drops during order submission, the retry queue is trapped inside UI component lifecycle.
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">The Solution &amp; Leverage</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              Extract a dedicated <code class="text-xs font-mono bg-slate-100 px-1 rounded font-bold">SyncEngine</code> with a <code class="text-xs font-mono bg-slate-100 px-1 rounded">SheetsAdapter</code>. The interface for the UI is minimal: <code class="text-xs font-mono bg-slate-100 px-1 rounded">enqueue(order)</code>, <code class="text-xs font-mono bg-slate-100 px-1 rounded">flush()</code>, and <code class="text-xs font-mono bg-slate-100 px-1 rounded">status: { pendingCount, isSyncing, hasError }</code>.
+            </p>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              <strong>Benefits:</strong> Offline storage, exponential backoff, and Sheets API format changes can be tested and verified with mock network calls completely outside React.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Before / After Diagram -->
+      <div class="p-6 sm:p-8 bg-slate-50/70">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Structural Comparison</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white p-4 rounded-2xl border border-slate-200">
+            <div class="text-xs font-bold text-rose-600 mb-2">Before: Leaking Networking Seam</div>
+            <div class="mermaid">
+graph TD
+  App[App.tsx] -->|Raw fetch call| Sheets[Google Apps Script]
+  App -->|JSON.stringify| Storage[localStorage 'POS_QUEUE']
+  App -->|Manual retry timeout| App
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200">
+            <div class="text-xs font-bold text-emerald-600 mb-2">After: Deep SyncEngine &amp; Adapter Seam</div>
+            <div class="mermaid">
+graph TD
+  App[App.tsx UI] -->|enqueue / status| Engine[SyncEngine]
+  Engine -->|Storage Adapter| Storage[(Offline Queue)]
+  Engine -->|Sheets Adapter| Sheets[Google Apps Script]
+  Engine -->|Auto Retry Loop| Engine
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- Candidate 3 -->
+    <article class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-6 sm:p-8 space-y-4 border-b border-slate-100">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800">
+            Candidate 3 — Worth Exploring
+          </span>
+          <div class="text-xs font-mono text-slate-500">
+            Involves: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">PaymentDock.tsx</code>, <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">TabletOrderPanel.tsx</code>
+          </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-slate-900">
+          Unify Media Compression &amp; Proof-of-Payment Intake
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">The Problem (Duplicated Mechanics)</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              Both <code class="text-xs font-mono bg-slate-100 px-1 rounded">PaymentDock.tsx</code> (for mobile view) and <code class="text-xs font-mono bg-slate-100 px-1 rounded">TabletOrderPanel.tsx</code> (for iPad view) contain identical 25-line HTML5 Canvas image resizing algorithms, JPEG compression math (<code class="text-xs font-mono bg-slate-100 px-1 rounded">0.65</code> quality, max 1000px width), and file input lifecycle handlers.
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">The Solution &amp; Leverage</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              Extract a deep <code class="text-xs font-mono bg-slate-100 px-1 rounded font-bold">compressPaymentProof(file)</code> utility or headless <code class="text-xs font-mono bg-slate-100 px-1 rounded">usePaymentProof</code> seam that accepts an input event or File object and produces a standardized, compressed data URL.
+            </p>
+            <p class="text-sm text-slate-600 leading-relaxed">
+              <strong>Benefits:</strong> Eliminates code duplication between mobile dock and tablet sidebar, centralizes memory safeguards for camera capture, and allows isolated testing of image compression bounds.
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+  </main>
+
+  <!-- Top Recommendation Section -->
+  <footer class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-3xl p-6 sm:p-8 space-y-4">
+    <div class="text-xs font-bold uppercase tracking-wider text-blue-300">Top Recommendation</div>
+    <h3 class="text-xl font-bold">
+      Start with Candidate 1: Deepening the Order Intake (<code class="text-blue-200">OrderSession</code>)
+    </h3>
+    <p class="text-sm text-blue-100 leading-relaxed max-w-3xl">
+      Candidate 1 offers the highest architectural leverage. By pulling cart mutations, subtotal math, and discount validation out of <code class="font-mono text-xs bg-white/10 px-1 rounded">App.tsx</code> into a deep <code class="font-mono text-xs bg-white/10 px-1 rounded">OrderSession</code>, we immediately decouple the complex tablet split layout from transaction math, eliminating 15+ prop drilling channels and making the core cashier logic 100% testable in isolation.
+    </p>
+  </footer>
+
+</body>
+</html>

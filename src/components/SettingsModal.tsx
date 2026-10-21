@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Plus,
@@ -6,16 +6,26 @@ import {
   Save,
   CheckCircle2,
   AlertCircle,
+  QrCode,
+  Upload,
+  RotateCcw,
+  Receipt,
+  ChevronRight,
 } from 'lucide-react';
 import { Product } from '../types';
 import { triggerHaptic } from '../utils/haptics';
+import { DEFAULT_QRIS_DATA } from '../assets/defaultQrisData';
 
 interface SettingsModalProps {
   isOpen: boolean;
   apiUrl: string;
   products: Product[];
+  customQrisImage?: string;
   onClose: () => void;
   onSave: (newUrl: string, updatedProducts: Product[]) => Promise<void>;
+  onOpenHistory?: () => void;
+  onSaveQrisImage?: (base64: string) => void;
+  onResetQrisImage?: () => void;
   onPullSheet?: (targetUrl?: string) => Promise<Product[] | null>;
 }
 
@@ -23,13 +33,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   apiUrl,
   products,
+  customQrisImage,
   onClose,
   onSave,
+  onOpenHistory,
+  onSaveQrisImage,
+  onResetQrisImage,
 }) => {
   const [urlInput, setUrlInput] = useState(apiUrl);
   const [editorProducts, setEditorProducts] = useState<Product[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const qrisInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Initialize editor list when modal opens
   React.useEffect(() => {
@@ -57,7 +72,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleRemoveRow = (idx: number) => {
     triggerHaptic('warning');
-    setEditorProducts(editorProducts.filter((_, i) => i !== idx));
+    setEditorProducts(editorProducts.filter((_: Product, i: number) => i !== idx));
+  };
+
+  const handleQrisFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (typeof ev.target?.result === 'string') {
+        if (onSaveQrisImage) {
+          onSaveQrisImage(ev.target.result);
+          triggerHaptic('success');
+          setFeedback({ type: 'success', message: 'Gambar QRIS (WebP) berhasil disimpan!' });
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleFieldChange = (idx: number, field: 'name' | 'price', value: string | number) => {
@@ -75,8 +108,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsSaving(true);
     setFeedback(null);
     const cleaned = editorProducts
-      .filter((p) => p.name.trim() !== '')
-      .map((p) => ({
+      .filter((p: Product) => p.name.trim() !== '')
+      .map((p: Product) => ({
         ...p,
         name: p.name.trim(),
         original_name: p.original_name || p.name.trim(),
@@ -148,14 +181,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
+          {/* Section 0: Open Transaction History */}
+          {onOpenHistory && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenHistory();
+              }}
+              className="pressable w-full p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/80 hover:border-blue-300 text-left flex items-center justify-between gap-3 shadow-2xs transition group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-[#007AFF] text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition truncate">
+                  Riwayat Transaksi
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-[#007AFF] shrink-0">
+                <span>Buka</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+          )}
+
           {/* Section 1: URL Apps Script */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 tracking-wide uppercase">
-                URL Web App (Apps Script)
-              </label>
-              <span className="text-[11px] text-blue-600 font-medium">Kolom I:M Sinkron</span>
-            </div>
+            <label className="text-xs font-bold text-slate-800 tracking-wide uppercase">
+              URL AKTIVASI (APPS SCRIPT)
+            </label>
             <input
               type="url"
               value={urlInput}
@@ -163,9 +218,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               placeholder="https://script.google.com/macros/s/.../exec"
               className="w-full h-11 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
             />
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Pastikan deployment Apps Script disetel dengan akses <strong>"Anyone"</strong> agar kasir dapat menyimpan pesanan tanpa login Google.
-            </p>
+          </div>
+
+          {/* Section 2: QRIS Merchant */}
+          <div className="space-y-2 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
+              <QrCode className="w-3.5 h-3.5 text-[#007AFF]" />
+              <span>Gambar QRIS</span>
+            </label>
+
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-18 bg-white border border-slate-200 rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1 shadow-2xs">
+                <img
+                  src={customQrisImage || DEFAULT_QRIS_DATA}
+                  alt="QRIS"
+                  className="w-full h-full object-contain rounded-lg"
+                />
+              </div>
+
+              <div className="flex-1 space-y-1.5">
+                <label className="cursor-pointer select-none pressable w-full h-9 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-2xs">
+                  <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
+                  <span>Ganti Gambar QRIS</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQrisFileChange}
+                    className="sr-only"
+                  />
+                </label>
+
+                {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('warning');
+                      onResetQrisImage();
+                      setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
+                    }}
+                    className="pressable w-full h-7 px-2 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Kembalikan ke Bawaan</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Section 2: Menu Editor */}
@@ -180,7 +278,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="space-y-2 max-h-[300px] overflow-y-auto px-0.5">
-              {editorProducts.map((item, idx) => (
+              {editorProducts.map((item: Product, idx: number) => (
                 <div
                   key={item.id || idx}
                   className="grid grid-cols-[1fr_96px_36px] gap-1.5 items-center w-full"
@@ -207,7 +305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleRemoveRow(idx)}
-                    className="w-9 h-10 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 transition"
+                    className="pressable w-9 h-10 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90 touch-manipulation"
                     title="Hapus Menu"
                     aria-label="Hapus Menu"
                   >
@@ -220,7 +318,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={handleAddRow}
-              className="pressable w-full h-10 rounded-xl border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 text-blue-600 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              className="pressable w-full h-10 rounded-xl border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 text-blue-600 text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.99] touch-manipulation"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Baris Menu</span>
@@ -229,12 +327,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-white border-t border-black/8 flex items-center justify-end">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/8 flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
+            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 touch-manipulation"
           >
             <Save className="w-3.5 h-3.5" />
             <span>{isSaving ? 'Menyimpan...' : 'Simpan & Sinkron'}</span>

@@ -1,0 +1,5 @@
+{
+  "summary":  "Kode Google Apps Script v2.3 bersih dan stabil untuk Danusan POS. Hanya mencatat transaksi ke Kolom A:G (Waktu, Nama Barang, Jumlah, Harga Satuan, Total, Pembayaran, Foto Dokumentasi) tanpa kolom samping ringkasan/omzet yang rawan rumus #ERROR!. Transaksi selalu mengisi baris kosong pertama (mulai baris 2).",
+  "updatedAt":  "2026-10-21T01:36:32.077343901Z",
+  "userFacing":  true
+}

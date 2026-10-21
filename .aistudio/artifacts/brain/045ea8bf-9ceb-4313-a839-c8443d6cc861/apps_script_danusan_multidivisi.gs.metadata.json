@@ -1,0 +1,5 @@
+{
+  "summary":  "Google Apps Script versi bersih & stabil untuk Danusan POS Multi-Divisi. Hanya mencatat transaksi murni ke Kolom A:G (Waktu, Nama Barang, Jumlah, Harga Satuan, Total, Pembayaran, Foto Dokumentasi) tanpa kolom ringkasan/katalog tambahan ke samping yang rawan rumus #ERROR!. Mengisi baris secara akurat mulai dari Baris 2 tanpa melompati baris, serta menyimpan foto bukti ke Google Drive secara otomatis.",
+  "updatedAt":  "2026-10-21T01:36:08.893656215Z",
+  "userFacing":  true
+}

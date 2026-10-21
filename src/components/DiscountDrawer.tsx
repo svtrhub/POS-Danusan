@@ -48,7 +48,7 @@ export const DiscountDrawer: React.FC<DiscountDrawerProps> = ({
 
       {/* Preset & Custom Drawer */}
       {enabled && (
-        <div className="mt-2 pt-2 border-t border-black/5 grid grid-cols-5 gap-1.5">
+        <div className="mt-2 pt-2 border-t border-black/5 grid grid-cols-5 gap-1 sm:gap-1.5 items-center select-none">
           {presets.map((preset) => (
             <button
               key={preset}
@@ -73,7 +73,7 @@ export const DiscountDrawer: React.FC<DiscountDrawerProps> = ({
             value={presets.includes(discount) ? '' : discount || ''}
             onChange={(e) => onCustomChange(Math.max(0, parseInt(e.target.value, 10) || 0))}
             placeholder="Rp..."
-            className="h-7 w-full rounded-lg bg-white border border-black/8 px-2 text-xs font-medium text-right text-slate-800 num focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
+            className="h-8 w-full rounded-lg bg-white border border-black/8 px-1.5 text-xs font-medium text-right text-slate-800 num focus:outline-none focus:ring-1 focus:ring-[#007AFF] touch-manipulation"
           />
         </div>
       )}

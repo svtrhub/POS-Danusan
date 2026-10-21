@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { Camera, QrCode, Banknote, Eye } from 'lucide-react';
 import { DiscountDrawer } from './DiscountDrawer';
+import { CameraActionSheet } from './CameraActionSheet';
 import { triggerHaptic } from '../utils/haptics';
 
 interface PaymentDockProps {
@@ -34,36 +35,7 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
   onCustomDiscountChange,
   onSubmit,
 }) => {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        // Safe canvas scale to max 1000px width with 0.65 JPEG quality
-        const scale = Math.min(1, 1000 / img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const base64 = canvas.toDataURL('image/jpeg', 0.65);
-          triggerHaptic('medium');
-          onPhotoCaptured(base64);
-        }
-      };
-      if (typeof ev.target?.result === 'string') {
-        img.src = ev.target.result;
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
+  const [isCameraActionOpen, setIsCameraActionOpen] = useState(false);
 
   const hasPhoto = Boolean(photoBase64);
   const isSubmitDisabled = totalQty === 0 || !hasPhoto;
@@ -84,7 +56,7 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
   };
 
   return (
-    <section className="fixed left-0 right-0 bottom-0 z-40 bg-white border-t border-black/8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
+    <section className="md:hidden fixed left-0 right-0 bottom-0 z-40 bg-white border-t border-black/8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
       <div className="max-w-xl mx-auto flex flex-col gap-2">
         {/* Discount Disclosure Row */}
         <DiscountDrawer
@@ -98,7 +70,7 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
         {/* Controls Row: Apple Inset Segmented Payment & Camera */}
         <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
           {/* iOS UISegmentedControl for Payment */}
-          <div className="grid grid-cols-2 bg-[#E5E5EA] p-0.5 rounded-xl h-10 border border-black/5">
+          <div className="grid grid-cols-2 bg-[#E5E5EA] p-0.5 rounded-xl h-10 border border-black/5 select-none touch-manipulation">
             <button
               type="button"
               onClick={() => {
@@ -132,16 +104,8 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
             </button>
           </div>
 
-          {/* Native Media Selector (Camera & Gallery) */}
-          <div className="flex items-center gap-1.5">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-
+          {/* Native Media Selector (Camera & Gallery via Action Sheet) */}
+          <div className="flex items-center gap-1.5 shrink-0 select-none touch-manipulation">
             {hasPhoto ? (
               <div className="flex items-center gap-1">
                 <button
@@ -165,7 +129,7 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                   type="button"
                   onClick={() => {
                     triggerHaptic('light');
-                    fileInputRef.current?.click();
+                    setIsCameraActionOpen(true);
                   }}
                   className="pressable h-10 px-2.5 rounded-xl bg-[#F2F2F7] hover:bg-slate-200/80 border border-black/5 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95"
                   title="Ganti Bukti (Kamera / Galeri)"
@@ -179,16 +143,16 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                 type="button"
                 onClick={() => {
                   triggerHaptic('light');
-                  fileInputRef.current?.click();
+                  setIsCameraActionOpen(true);
                 }}
-                className={`pressable h-10 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition active:scale-[0.98] shadow-2xs ${
+                className={`pressable h-10 px-3 sm:px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition active:scale-[0.98] shadow-2xs ${
                   totalQty > 0
                     ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 animate-pulse'
                     : 'bg-blue-50/90 text-[#007AFF] border-blue-200/80 hover:bg-blue-100'
                 }`}
               >
-                <Camera className="w-4 h-4" />
-                <span>{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti Tunai'}</span>
+                <Camera className="w-4 h-4 shrink-0" />
+                <span className="whitespace-nowrap">{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti Tunai'}</span>
               </button>
             )}
           </div>
@@ -199,20 +163,28 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
           type="button"
           onClick={handleSubmit}
           disabled={isSubmitDisabled}
-          className={`pressable w-full h-12 rounded-xl font-bold flex items-center justify-between px-4 transition duration-100 select-none ${
+          className={`pressable w-full h-12 rounded-xl font-bold flex items-center justify-between px-3.5 sm:px-4 transition duration-100 select-none touch-manipulation ${
             isSubmitDisabled
               ? 'bg-[#E5E5EA] text-slate-400 cursor-not-allowed border border-black/5'
               : 'bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white shadow-sm'
           }`}
         >
-          <span className="text-[14px] font-bold tracking-tight">
+          <span className="text-[13px] sm:text-[14px] font-bold tracking-tight truncate min-w-0 pr-2">
             {submitButtonText}
           </span>
-          <span className="text-[15px] font-extrabold num tracking-tight">
+          <span className="text-[14px] sm:text-[15px] font-extrabold num tracking-tight shrink-0 whitespace-nowrap">
             Rp {Number(netTotal || 0).toLocaleString('id-ID')}
           </span>
         </button>
       </div>
+
+      {/* Camera & Gallery Action Sheet */}
+      <CameraActionSheet
+        isOpen={isCameraActionOpen}
+        onClose={() => setIsCameraActionOpen(false)}
+        onPhotoCaptured={onPhotoCaptured}
+        title={paymentMethod === 'QRIS' ? 'Bukti Pembayaran QRIS' : 'Bukti Pembayaran Tunai'}
+      />
     </section>
   );
 };
