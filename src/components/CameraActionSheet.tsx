@@ -14,7 +14,6 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
   isOpen,
   onClose,
   onPhotoCaptured,
-  title = 'Lampirkan Bukti Pembayaran',
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -68,11 +67,10 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs transition-opacity animate-fade-in select-none"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in select-none"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={title}
     >
       {/* Hidden file inputs: separated to guarantee native camera trigger vs gallery */}
       <input
@@ -94,70 +92,40 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
       />
 
       <div
-        className="w-full max-w-sm flex flex-col gap-2 pb-[calc(10px+env(safe-area-inset-bottom,0px))] sm:pb-0"
+        className="w-full max-w-xs sm:max-w-sm pb-[calc(10px+env(safe-area-inset-bottom,0px))] sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Main Action Group Card - Apple ActionSheet styling */}
+        {/* Main Action Group Card - Ultra Clean & Minimalist */}
         <div className="bg-white rounded-2xl shadow-2xl border border-black/8 overflow-hidden divide-y divide-black/6">
-          {/* Header Title */}
-          <div className="py-2.5 px-4 text-center bg-slate-50/70 border-b border-black/5">
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">
-              {title}
-            </span>
-          </div>
-
           {isProcessing ? (
-            <div className="h-28 flex flex-col items-center justify-center gap-2 text-slate-600 bg-white">
+            <div className="h-24 flex flex-col items-center justify-center gap-2 text-slate-600 bg-white">
               <Loader2 className="w-5 h-5 text-[#007AFF] animate-spin" />
-              <span className="text-xs font-semibold text-slate-700">Mengompres & memproses foto...</span>
+              <span className="text-xs font-semibold text-slate-700">Memproses foto...</span>
             </div>
           ) : (
             <>
-              {/* Action 1: Ambil Foto Langsung (Bypasses Gallery directly to Native Camera UI) */}
+              {/* Action 1: Ambil foto */}
               <button
                 type="button"
                 onClick={triggerCameraInput}
-                className="pressable w-full h-14 px-4 flex items-center justify-center gap-3 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-900 text-sm sm:text-[15px] font-semibold touch-manipulation"
+                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation"
               >
-                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#007AFF] flex items-center justify-center shrink-0">
-                  <Camera className="w-4 h-4 stroke-[2.2]" />
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="font-bold text-slate-900">Ambil foto</span>
-                  <span className="text-[11px] text-slate-500 font-normal">Nyalakan kamera langsung</span>
-                </div>
+                <Camera className="w-5 h-5 text-slate-700 stroke-[2]" />
+                <span>Ambil foto</span>
               </button>
 
               {/* Action 2: Pilih Galeri */}
               <button
                 type="button"
                 onClick={triggerGalleryInput}
-                className="pressable w-full h-14 px-4 flex items-center justify-center gap-3 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-900 text-sm sm:text-[15px] font-semibold touch-manipulation"
+                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation"
               >
-                <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                  <ImageIcon className="w-4 h-4 stroke-[2.2]" />
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="font-bold text-slate-900">Pilih Galeri</span>
-                  <span className="text-[11px] text-slate-500 font-normal">Pilih screenshot / foto struk</span>
-                </div>
+                <ImageIcon className="w-5 h-5 text-slate-700 stroke-[2]" />
+                <span>Pilih Galeri</span>
               </button>
             </>
           )}
         </div>
-
-        {/* Action 3: Batal - Separate Apple Card */}
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            onClose();
-          }}
-          disabled={isProcessing}
-          className="pressable w-full h-12 bg-white rounded-2xl shadow-lg border border-black/8 text-[#007AFF] text-sm sm:text-[15px] font-bold flex items-center justify-center transition active:scale-[0.985] hover:bg-slate-50 touch-manipulation"
-        >
-          <span>Batal</span>
-        </button>
       </div>
     </div>
   );
