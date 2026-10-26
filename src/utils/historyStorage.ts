@@ -1,14 +1,48 @@
 import { QueuedOrder, SalesHistoryItem } from '../types';
+import {
+  saveHistoryOrder,
+  getAllHistoryOrders,
+  markHistoryOrderSynced,
+} from '../services/indexedDBStorage';
 
 const STORAGE_KEY = 'POS_LOCAL_HISTORY';
 const MAX_LOCAL_ITEMS = 500;
 
+// In-memory cache for synchronous render performance
+let memoryHistoryCache: SalesHistoryItem[] | null = null;
+
+// Initialize memory cache from IndexedDB and localStorage
+if (typeof window !== 'undefined') {
+  getAllHistoryOrders()
+    .then((dbItems) => {
+      if (dbItems && dbItems.length > 0) {
+        memoryHistoryCache = dbItems;
+      } else {
+        // Fallback to localStorage if IndexedDB is still empty
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) memoryHistoryCache = parsed;
+          }
+        } catch (_) {}
+      }
+    })
+    .catch(() => {});
+}
+
 export function getLocalHistory(): SalesHistoryItem[] {
+  if (memoryHistoryCache !== null) {
+    return [...memoryHistoryCache];
+  }
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    memoryHistoryCache = list;
+    return list;
   } catch (err) {
     console.warn('Failed to read local history:', err);
     return [];
@@ -37,12 +71,21 @@ export function saveOrderToLocalHistory(order: QueuedOrder): SalesHistoryItem {
   // Avoid duplicates
   const filtered = current.filter((item) => item.order_id !== order.order_id);
   const updated = [historyItem, ...filtered].slice(0, MAX_LOCAL_ITEMS);
+  memoryHistoryCache = updated;
 
+  // 1. Asynchronously persist full item (including photo proof) to IndexedDB
+  saveHistoryOrder(historyItem).catch((err) => {
+    console.warn('Failed to save history to IndexedDB:', err);
+  });
+
+  // 2. Mirror lightweight data to localStorage for instant synchronous boot
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  } catch (err) {
-    console.warn('Failed to save order to local history:', err);
-  }
+    const lightweight = updated.map((it) => ({
+      ...it,
+      photo_base64: '', // strip photo to stay well below 5MB localStorage limit
+    }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
+  } catch (_) {}
 
   return historyItem;
 }
@@ -52,8 +95,15 @@ export function markOrderSyncedLocally(orderId: string): void {
   const updated = current.map((item) =>
     item.order_id === orderId ? { ...item, is_local_pending: false } : item
   );
+  memoryHistoryCache = updated;
+
+  // Update in IndexedDB
+  markHistoryOrderSynced(orderId).catch(() => {});
+
+  // Update localStorage mirror
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    const lightweight = updated.map((it) => ({ ...it, photo_base64: '' }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
   } catch (_) {}
 }
 

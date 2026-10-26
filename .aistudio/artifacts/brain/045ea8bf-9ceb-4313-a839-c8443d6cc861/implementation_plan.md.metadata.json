@@ -1,6 +1,6 @@
 {
-  "summary": "Rencana implementasi penanaman aset QRIS default permanen ke dalam basis kode aplikasi POS Danusan agar langsung tersedia di semua perangkat baru tanpa perlu input manual.",
-  "updatedAt": "2026-10-20T10:29:40.323709004Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Rencana komprehensif implementasi lapisan persistensi IndexedDB untuk POS Danusan, memastikan katalog menu, antrean sinkronisasi offline, dan foto bukti pembayaran tersimpan permanen di disk perangkat tanpa risiko kehilangan data saat crash atau refresh halaman.",
+  "updatedAt":  "2026-10-26T13:14:36.507909141Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

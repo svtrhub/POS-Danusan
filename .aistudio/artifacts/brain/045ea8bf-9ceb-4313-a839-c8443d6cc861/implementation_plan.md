@@ -1,101 +1,149 @@
-# Penanaman QRIS Default Permanen Multi-Perangkat (Offline-First)
+# POS Danusan — IndexedDB Offline Persistence & Crash Recovery Plan
 
-Memastikan gambar QRIS resmi bawaan ("MANAGEMENT GATHERING 2026 - FOOD") tertanam secara permanen dan kokoh ke dalam aset *bundle* aplikasi, sehingga setiap kali aplikasi POS dibuka di perangkat atau peramban baru, QRIS langsung aktif dan siap digunakan kasir tanpa perlu input manual.
+Implementasi lapisan persistensi data lokal modern berbasis **IndexedDB** untuk POS Danusan guna mengamankan katalog menu, antrean transaksi tertunda (*pending sync queue*), dan foto bukti pembayaran langsung ke disk browser, menjamin nol kehilangan data transaksi (*zero data loss*) meskipun browser tertutup paksa, ponsel mati, atau halaman di-refresh saat offline.
 
-### User Review & Critical Decisions
+---
 
 > [!IMPORTANT]
-> **Keputusan Terkonfirmasi (Fase 1 Clarification)**:
-> 1. **Sumber QRIS**: Menggunakan gambar QRIS resmi yang sudah ada di sistem ("MANAGEMENT GATHERING 2026 - FOOD", NMID: ID1026614259186).
-> 2. **Mekanisme Distribusi**: Ditanam langsung (*hard-bundled*) ke dalam aset aplikasi agar langsung tersedia sejak *first paint* di perangkat baru dan 100% siap digunakan secara *offline*.
-> 3. **Fleksibilitas Pengguna**: Fitur kustomisasi di Pengaturan tetap dipertahankan; jika kasir mengunggah QRIS baru, sistem akan menggunakannya, dan jika menekan "Kembalikan ke Bawaan", sistem otomatis kembali ke QRIS resmi bawaan ini.
+> ### Hasil Konfirmasi Pengguna & Parameter Arsitektur
+> Berdasarkan tanya-jawab klarifikasi:
+> - **Cakupan Persistensi Terkonfirmasi**: Seluruh katalog produk (*custom menu*), antrean sinkronisasi transaksi (*pending sync queue*), dan **foto bukti pembayaran beresolusi penuh** (*base64 photo proofs*) disimpan aman di IndexedDB.
+> - **Strategi Pemulihan & Sinkronisasi Terkonfirmasi**: Saat koneksi internet kembali atau aplikasi dibuka ulang setelah crash, sistem secara otomatis melakukan sinkronisasi latar belakang (*auto-sync in background*) dan memberikan konfirmasi melalui notifikasi toast.
+> - **Migrasi Data Otomatis**: Data lama yang tersisa di `localStorage` akan dimigrasikan secara otomatis dan transparan ke IndexedDB pada inisialisasi pertama tanpa mengganggu riwayat penjualan yang ada.
 
 ---
 
-### 1. Overview & Core Concept
+## 1. Overview & Core Concept
 
-- **What It Does**: Memecahkan masalah ketergantungan `localStorage` lokal pada perangkat baru. Dengan menanamkan aset gambar QRIS bawaan sebagai import statis modul TypeScript/Vite dan fallback berlapis (*base64 in-memory data URL* + *bundled WebP/PNG assets*), perangkat baru yang belum pernah membuka POS Danusan akan langsung menampilkan QRIS resmi saat kasir menarik laci QRIS atau saat pelanggan ingin membayar.
-- **Target Audience / Persona**: Panitia dan kasir danusan yang membuka aplikasi di ponsel masing-masing (HP baru, ganti perangkat, mode *incognito*, atau setelah *clear cache*).
-- **Key Value**: Nol konfigurasi awal (*zero setup*) untuk kasir baru; QRIS selalu muncul instan, tidak pernah rusak/blank (*zero broken images*), dan tetap berfungsi saat sinyal internet minim.
+### Masalah yang Diselesaikan
+Sebelumnya, antrean sinkronisasi transaksi dan foto bukti pembayaran disimpan di `localStorage`. Karena `localStorage` memiliki batasan kuota ketat (~5MB) dan bersifat sinkron pada *main thread*, penambahan beberapa foto bukti pembayaran saat offline berisiko memicu `QuotaExceededError` atau hilangnya transaksi ketika browser di-refresh.
 
----
-
-### 2. User Experience & Visual Design
-
-- **Alur Perangkat Baru (First-Time User Flow)**:
-  1. Kasir membuka tautan aplikasi POS Danusan di HP baru (Chrome / Safari / PWA).
-  2. Saat pelanggan hendak membayar via QRIS, kasir menggeser tab "Tarik QRIS" di bawah header atau mengetuk kartu QRIS di panel kasir.
-  3. Lembar QRIS terbuka mulus menampilkan kode QRIS resmi "MANAGEMENT GATHERING 2026 - FOOD" dengan status badge "QRIS Pembayaran Resmi" berwarna hijau aktif.
-  4. Tidak ada lagi layar kosong atau kewajiban masuk ke menu Pengaturan terlebih dahulu.
-
-- **Alur Kustomisasi & Reset (Settings Flow)**:
-  1. Di *SettingsModal*, pratinjau QRIS langsung menampilkan gambar default resmi.
-  2. Tombol "Ganti Gambar QRIS" tetap tersedia bagi yang ingin mengganti gambar acara lain.
-  3. Tombol "Kembalikan ke Bawaan" mengembalikan QRIS ke aset resmi bawaan dan membersihkan *override* lokal.
-
-- **Visual Identity & Theme**:
-  - Mengikuti Apple Minimalist White & iOS System Palette (`#007AFF`, `#F2F2F7`, `#1C1C1E`).
-  - Laci QRIS bersih dengan bayangan halus, batas hairline tipis, dan *card overlay* berbingkai membulat 24px (`rounded-3xl`).
+### Solusi yang Dihadirkan
+Membangun lapisan persistensi asynchronous berbasis **IndexedDB (`POS_DATABASE_V1`)** yang:
+1. Menyimpan data transaksi offline dan foto bukti pembayaran tanpa batas kuota sempit (kapasitas penyimpanan disk browser hingga gigabyte).
+2. Menyimpan katalog menu aktif per divisi secara persisten sehingga saat membuka aplikasi tanpa sinyal, menu lengkap langsung siap digunakan dalam <100ms.
+3. Mengembalikan antrean transaksi yang belum sempat tersinkronisasi (*recovery on launch/crash*) secara otomatis begitu aplikasi dibuka kembali, lalu mengirimkannya ke Google Sheets saat internet tersedia.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
+## 2. User Experience & Visual Design
 
-- **Keputusan 1: Format & Strategi Penanaman Aset**:
-  - *Pendekatan*: Menyatukan referensi QRIS bawaan melalui file data konstan TypeScript (`src/assets/defaultQrisData.ts` dan `src/assets/defaultQris.ts`) yang diimpor langsung oleh React komponen, dilengkapi dengan aset statis di direktori `public/` sebagai cadangan URL web.
-  - *Alasan*: Import modul TypeScript di-bundle langsung oleh Vite ke dalam file JavaScript klien. Artinya, gambar QRIS akan terunduh bersama kode utama aplikasi; browser tidak perlu melakukan request HTTP tambahan yang rentan gagal atau lambat di jaringan seluler lemah.
-  - *Alternatif yang Ditinggalkan*: Hanya mengandalkan request API `/api/save-default-qris` (ditinggalkan karena aplikasi adalah SPA statis tanpa backend server Express aktif di mode dev/preview).
-
-- **Keputusan 2: Pembersihan MIME-Type & Header Gambar**:
-  - *Pendekatan*: Memperbaiki ketidaksesuaian MIME-type pada `public/qris-default.webp` (yang sebelumnya berisi format JPEG) menjadi WebP valid dan JPEG valid terpisah, serta memastikan data URL memiliki header `data:image/jpeg;base64,...` yang kompatibel dengan WebKit Safari dan Chromium Android.
-  - *Alasan*: Mencegah decode error pada browser Safari iOS saat membuka gambar statis.
-
-- **Keputusan 3: Hierarchy Fallback Multi-Lapisan**:
-  - *Pendekatan*: Mengatur urutan *fallback* di `App.tsx`, `QRISPullCard.tsx`, dan `SettingsModal.tsx`:
-    1. Kustom QRIS pengguna dari `localStorage` (jika ada).
-    2. Data URL statis bawaan `DEFAULT_QRIS_DATA` (tersedia seketika di memori, zero HTTP request).
-    3. Import aset bawaan bundler (`defaultQrisWebp` / `defaultQrisPng`).
-    4. Path statis `/qris-default.webp` dari folder publik.
-  - *Alasan*: Menjamin keandalan 100% tanpa celah gambar blank di semua kondisi jaringan dan tipe peramban.
-
----
-
-### 4. Technical Architecture & Data Strategy
-
-#### Diagram Arsitektur Distribusi QRIS
+### Alur Pengalaman Pengguna (User Flows)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Aplikasi POS Danusan                     │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-            ┌──────────────────┴──────────────────┐
-            ▼                                     ▼
-┌───────────────────────┐             ┌───────────────────────┐
-│     Perangkat Lama    │             │    Perangkat Baru     │
-│   (Ada LocalStorage)  │             │ (LocalStorage Kosong) │
-└───────────┬───────────┘             └───────────┬───────────┘
-            │                                     │
-            │ POS_QRIS_IMAGE                      │ Fallback Otomatis
-            ▼                                     ▼
-┌───────────────────────┐             ┌───────────────────────┐
-│   QRIS Kustom Kasir   │             │  DEFAULT_QRIS_DATA    │
-│  (Jika Pernah Diubah) │             │ (Embedded Base64 TS)  │
-└───────────────────────┘             └───────────┬───────────┘
-            │                                     │
-            └──────────────────┬──────────────────┘
-                               ▼
-            ┌─────────────────────────────────────┐
-            │         Tampilan QRIS Aktif         │
-            │      - Laci Tarik (QRISPullCard)    │
-            │      - Pratinjau di SettingsModal   │
-            │      - Panel Split iPad             │
-            └─────────────────────────────────────┘
+[ Transaksi Kasir Offline ]
+           │
+           ▼
+[ Simpan Pesanan + Foto Bukti ]
+           │
+           ▼
+[ Write-Through ke IndexedDB ] ───► Tersimpan permanen di Disk (Crash-Proof)
+           │
+           ▼
+  [ Ada Koneksi Internet? ]
+     ├─── YA ───► Kirim ke Google Apps Script ──► Notifikasi: "Transaksi Berhasil Tersinkron!"
+     └─── TIDAK ─► Tetap di IndexedDB (Antrean) ──► Notifikasi: "Tersimpan Offline di Perangkat"
+                                                       │
+                                        (Ponsel mati / Refresh / Crash)
+                                                       │
+                                                       ▼
+                                            [ Aplikasi Dibuka Lagi ]
+                                                       │
+                                                       ▼
+                                      [ Rehidrasi Otomatis dari Disk ]
+                                                       │
+                                      [ Auto-Sync saat Internet Pulih ]
 ```
 
-#### Komponen yang Akan Diperbarui:
-1. `src/assets/defaultQrisData.ts`: Memastikan string base64 QRIS resmi bersih, valid, dan langsung di-export.
-2. `src/assets/defaultQris.ts`: Menyatukan ekspor modul statis sebagai sumber kebenaran tunggal (*single source of truth*).
-3. `src/App.tsx`: Menginisialisasi state `customQrisImage` dengan prioritas bawaan yang aman sehingga saat pertama kali dibuka di perangkat baru, state langsung terisi `DEFAULT_QRIS_DATA` tanpa nilai kosong.
-4. `src/components/QRISPullCard.tsx`: Menyempurnakan fallback sources dan event handler agar selalu merender gambar default jika pengguna belum mengunggah gambar kustom.
-5. `src/components/SettingsModal.tsx`: Menjamin pratinjau QRIS di pengaturan selalu menampilkan gambar resmi bawaan jika belum ada gambar kustom.
+1. **Kasir Berjualan Tanpa Internet**:
+   - Kasir memilih produk, melampirkan foto bukti QRIS/Tunai, dan menekan **Simpan Pesanan**.
+   - Data langsung tersimpan di IndexedDB dalam hitungan milidetik.
+   - Muncul notifikasi toast lembut: *"Transaksi tersimpan di antrean offline (Aman di perangkat)"*.
+
+2. **Skenario Crash atau Refresh Halaman**:
+   - Jika tab browser tidak sengaja tertutup, ponsel kehabisan baterai, atau halaman di-refresh, saat aplikasi dibuka kembali:
+   - Layanan sinkronisasi secara instan merehidrasi antrean dari IndexedDB.
+   - Badge status offline di header menampilkan jumlah pesanan yang tersimpan aman di disk (misal: `1 pesanan tersimpan offline`).
+
+3. **Pemulihan Koneksi Otomatis (*Auto-Sync*)**:
+   - Begitu perangkat mendeteksi sinyal internet aktif kembali (`window.online` event atau saat polling berkala), antrean di IndexedDB diproses satu per satu.
+   - Setelah sukses terkirim ke Google Sheets, status transaksi diperbarui menjadi `synced` di IndexedDB dan toast konfirmasi muncul: *"1 transaksi offline berhasil disinkronkan ke Google Sheets"*.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+### Keputusan 1: Engine IndexedDB Ringan Tanpa Dependensi Berat
+- **Pilihan**: Mengimplementasikan wrapper Promise-based IndexedDB terstandarisasi yang sangat ringan (~2KB) dengan TypeScript typing lengkap, daripada menambahkan library runtime besar.
+- **Alasan**: Menjaga bundle web app tetap ramping, waktu muat awal (*First Contentful Paint*) super cepat untuk operasional kasir lapangan, dan sepenuhnya kompatibel dengan standar Web API PWA modern di iOS Safari dan Android Chrome.
+
+### Keputusan 2: Arsitektur Dual-Layer (Memory Cache + Disk Write-Through)
+- **Pilihan**: Komponen UI membaca data dari cache memori instan (state React), sedangkan setiap operasi penambahan, pembaruan, atau penghapusan transaksi selalu melakukan *write-through* secara asynchronous ke IndexedDB.
+- **Alasan**: Mencegah kelambatan rendering UI saat kasir mengetuk tombol pesanan cepat, sekaligus menjamin data tidak akan hilang sedetik pun jika aplikasi tiba-tiba berhenti.
+
+### Keputusan 3: Strategi Migrasi Transparan dari `localStorage`
+- **Pilihan**: Saat database pertama kali dibuka, sistem memeriksa apakah ada sisa data di `POS_QUEUE`, `POS_MENU`, atau `POS_LOCAL_HISTORY` pada `localStorage`. Jika ada, data disalin ke IndexedDB kemudian dibersihkan dari `localStorage` untuk mencegah duplikasi.
+- **Alasan**: Pengguna tidak akan kehilangan riwayat transaksi terdahulu atau pengaturan menu kustom yang sudah dibuat.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+### Diagram Arsitektur Sistem
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          PRESENTATION LAYER                            │
+│   [ Menu Grid ]     [ Order Panel / Dock ]     [ Transaction History ] │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     │
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        REACT HOOKS & SESSION                           │
+│     useOrderSession            useSyncEngine          useHistory       │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     │
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        SERVICES & DISK LAYER                           │
+│                                                                        │
+│   ┌──────────────────────┐          ┌──────────────────────────────┐   │
+│   │   syncEngine.ts      │ ◄──────► │     indexedDBStorage.ts      │   │
+│   │ (Background Queue)   │          │ (Promise-Based IDB Client)   │   │
+│   └──────────┬───────────┘          └──────────────┬───────────────┘   │
+└──────────────┼─────────────────────────────────────┼───────────────────┘
+               │                                     │
+               ▼                                     ▼
+   ┌───────────────────────┐            ┌────────────────────────────┐
+   │ Google Apps Script    │            │   INDEXEDDB (Browser Disk) │
+   │ (Spreadsheet & Drive) │            │   • catalog_store          │
+   └───────────────────────┘            │   • sync_queue_store       │
+                                        │   • sales_history_store    │
+                                        │   • app_config_store       │
+                                        └────────────────────────────┘
+```
+
+### Struktur Database & Object Stores (`POS_DATABASE_V1`)
+
+| Object Store | Key Path | Index | Data yang Disimpan |
+| :--- | :--- | :--- | :--- |
+| `catalog_store` | `id` | `category`, `name` | Daftar produk aktif, harga, dan kustomisasi menu divisi |
+| `sync_queue_store` | `order_id` | `timestamp`, `status` | Antrean pesanan offline + foto bukti pembayaran beresolusi penuh |
+| `sales_history_store` | `order_id` | `timestamp`, `payment_method` | Riwayat lengkap transaksi lokal (termasuk status sync) |
+| `app_config_store` | `key` | - | URL Apps Script, pengaturan divisi, dan metadata sistem |
+
+### Tahapan Implementasi Teknis
+
+1. **Modul Penyimpanan IndexedDB (`src/services/indexedDBStorage.ts`)**:
+   - Inisialisasi DB dengan skema v1 dan upgrade handler.
+   - Operasi CRUD asynchronous: `saveQueueOrder`, `removeQueueOrder`, `getAllQueueOrders`, `saveCatalog`, `getCatalog`, `saveHistoryOrder`, `getAllHistoryOrders`.
+   - Handler migrasi otomatis dari `localStorage`.
+
+2. **Pembaruan Sync Engine (`src/services/syncEngine.ts`)**:
+   - Ganti ketergantungan `localStorage` dengan `indexedDBStorage`.
+   - Inisialisasi antrean saat aplikasi start via `indexedDBStorage.getAllQueueOrders()`.
+   - Otomatis trigger proses sinkronisasi latar belakang jika ada antrean tertinggal saat koneksi pulih.
+
+3. **Pembaruan State Menu & Riwayat**:
+   - Hubungkan `App.tsx` dan `historyStorage.ts` ke IndexedDB agar penambahan foto dan kustomisasi menu tidak terbatas kuota 5MB.
+   - Sediakan indikator status sinkronisasi yang elegan dan tidak mengganggu.

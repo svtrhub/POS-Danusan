@@ -1,11 +1,20 @@
 import { QueuedOrder, Product, SalesHistoryItem, OrderItem } from '../types';
 import { markOrderSyncedLocally } from '../utils/historyStorage';
+import {
+  saveQueueOrder,
+  removeQueueOrder,
+  getAllQueueOrders,
+  setConfig,
+  getConfig,
+  migrateFromLocalStorage,
+} from './indexedDBStorage';
 
 export interface SyncEngineState {
   queue: QueuedOrder[];
   isSyncing: boolean;
   hasSyncError: boolean;
   apiUrl: string;
+  isReady: boolean;
 }
 
 type Subscriber = (state: SyncEngineState) => void;
@@ -15,20 +24,39 @@ class SyncEngineService {
   private isSyncing = false;
   private hasSyncError = false;
   private apiUrl = '';
+  private isReady = false;
   private subscribers: Set<Subscriber> = new Set();
 
   constructor() {
     this.init();
   }
 
-  private init() {
+  private async init() {
     try {
-      this.apiUrl = localStorage.getItem('POS_API_URL') || '';
-      const savedQueue = localStorage.getItem('POS_QUEUE');
-      if (savedQueue) {
-        this.queue = JSON.parse(savedQueue);
+      // 1. Run migration from legacy localStorage once if applicable
+      await migrateFromLocalStorage();
+
+      // 2. Load API URL from IndexedDB or localStorage fallback
+      const savedUrl = await getConfig<string>('apiUrl');
+      this.apiUrl = (savedUrl || localStorage.getItem('POS_API_URL') || '').trim();
+
+      // 3. Rehydrate full crash-proof offline queue from IndexedDB
+      const diskQueue = await getAllQueueOrders();
+      this.queue = diskQueue;
+      this.isReady = true;
+      this.notify();
+
+      // 4. Auto-sync if there are leftover pending orders from previous session / crash
+      if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
+        setTimeout(() => {
+          this.processQueue();
+        }, 800);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('SyncEngine init note:', err);
+      this.isReady = true;
+      this.notify();
+    }
 
     // Auto-sync when device regains connectivity
     if (typeof window !== 'undefined') {
@@ -46,6 +74,7 @@ class SyncEngineService {
       isSyncing: this.isSyncing,
       hasSyncError: this.hasSyncError,
       apiUrl: this.apiUrl,
+      isReady: this.isReady,
     };
   }
 
@@ -62,25 +91,38 @@ class SyncEngineService {
     this.subscribers.forEach((fn) => fn(state));
   }
 
-  public setApiUrl(url: string) {
+  public async setApiUrl(url: string) {
     this.apiUrl = url.trim();
     try {
       localStorage.setItem('POS_API_URL', this.apiUrl);
+      await setConfig('apiUrl', this.apiUrl);
     } catch (_) {}
     this.notify();
-    if (this.apiUrl && this.queue.length > 0) {
+    if (this.apiUrl && this.queue.length > 0 && navigator.onLine) {
       this.processQueue();
     }
   }
 
-  public enqueue(order: QueuedOrder): void {
+  public async enqueue(order: QueuedOrder): Promise<void> {
+    // 1. In-memory queue update (instant reactivity)
     this.queue = [...this.queue, order];
-    try {
-      localStorage.setItem('POS_QUEUE', JSON.stringify(this.queue));
-    } catch (_) {}
     this.notify();
 
-    // Trigger background sync
+    // 2. Asynchronous write-through to IndexedDB disk (Crash-Proof)
+    try {
+      await saveQueueOrder(order);
+      // Fallback mirror without large blob to prevent localStorage quota crash
+      try {
+        localStorage.setItem(
+          'POS_QUEUE_META',
+          JSON.stringify(this.queue.map((q) => ({ id: q.order_id, ts: q.timestamp })))
+        );
+      } catch (_) {}
+    } catch (err) {
+      console.warn('Failed to persist queued order to IndexedDB:', err);
+    }
+
+    // 3. Trigger background auto-sync
     setTimeout(() => {
       this.processQueue();
     }, 100);
@@ -96,6 +138,7 @@ class SyncEngineService {
     this.notify();
 
     let activeQueue = [...this.queue];
+    let syncedCount = 0;
 
     while (activeQueue.length > 0) {
       const itemToSync = activeQueue[0];
@@ -109,9 +152,10 @@ class SyncEngineService {
         if (data.status === 'ok') {
           activeQueue.shift();
           this.queue = [...activeQueue];
-          try {
-            localStorage.setItem('POS_QUEUE', JSON.stringify(this.queue));
-          } catch (_) {}
+          syncedCount++;
+
+          // Remove from persistent IndexedDB store
+          await removeQueueOrder(itemToSync.order_id);
           markOrderSyncedLocally(itemToSync.order_id);
           this.notify();
         } else {
@@ -129,6 +173,16 @@ class SyncEngineService {
     this.isSyncing = false;
     this.hasSyncError = false;
     this.notify();
+
+    // Dispatch custom event for user-facing toast notification
+    if (syncedCount > 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('pos-sync-success', {
+          detail: { count: syncedCount },
+        })
+      );
+    }
+
     return true;
   }
 
@@ -169,7 +223,6 @@ class SyncEngineService {
     const url = urlOverride || this.apiUrl;
     if (!url) return null;
     try {
-      // 1. Try ?action=getHistory first
       let rawOrders: any[] = [];
       try {
         const res = await fetch(`${url}?action=getHistory`);
@@ -182,7 +235,6 @@ class SyncEngineService {
         else if (Array.isArray(data.data)) rawOrders = data.data;
       } catch (_) {}
 
-      // 2. Fallback to ?action=getOrders if empty
       if (!rawOrders || rawOrders.length === 0) {
         try {
           const res2 = await fetch(`${url}?action=getOrders`);

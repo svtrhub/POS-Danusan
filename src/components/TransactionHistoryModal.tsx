@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { SalesHistoryItem } from '../types';
 import { getLocalHistory, mergeHistory } from '../utils/historyStorage';
+import { getAllHistoryOrders } from '../services/indexedDBStorage';
 import { triggerHaptic } from '../utils/haptics';
 
 interface TransactionHistoryModalProps {
@@ -49,11 +50,17 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
   // Load initial local history and fetch from sheet
   const loadData = useCallback(
     async (isManualRefresh = false) => {
-      const local = getLocalHistory();
-      setHistoryItems((prev) => (prev.length === 0 ? local : prev));
+      let local = getLocalHistory();
+      try {
+        const idbHistory = await getAllHistoryOrders();
+        if (idbHistory && idbHistory.length > 0) {
+          local = idbHistory;
+        }
+      } catch (_) {}
+
+      setHistoryItems(local);
 
       if (!apiUrl) {
-        setHistoryItems(local);
         if (isManualRefresh) {
           setFetchError('URL Google Sheet belum diatur di Pengaturan');
         }

@@ -19,6 +19,7 @@ import { usePWAInstall } from './hooks/usePWAInstall';
 import { DEFAULT_QRIS_DATA } from './assets/defaultQrisData';
 import { playSuccessSound } from './utils/sound';
 import { saveOrderToLocalHistory } from './utils/historyStorage';
+import { getCatalog, saveCatalog } from './services/indexedDBStorage';
 
 const DEFAULT_MENU: Product[] = [
   { id: 'p1', name: 'Bomboloni', original_name: 'Bomboloni', price: 5000 },
@@ -85,8 +86,37 @@ export default function App() {
     setToastMsg(msg);
     setTimeout(() => {
       setToastMsg((cur) => (cur === msg ? null : cur));
-    }, 2000);
+    }, 2500);
   }, []);
+
+  // Rehydrate catalog from IndexedDB disk on mount
+  useEffect(() => {
+    getCatalog()
+      .then((dbCatalog) => {
+        if (dbCatalog && dbCatalog.length > 0) {
+          setProducts(dbCatalog);
+        } else {
+          saveCatalog(DEFAULT_MENU).catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load catalog from IndexedDB:', err);
+      });
+  }, []);
+
+  // Listen for background auto-sync completion events
+  useEffect(() => {
+    const handleSyncSuccess = (e: Event) => {
+      const customEvent = e as CustomEvent<{ count: number }>;
+      const count = customEvent.detail?.count || 1;
+      showToast(`✓ ${count} pesanan offline berhasil disinkronkan ke Sheet!`);
+    };
+
+    window.addEventListener('pos-sync-success', handleSyncSuccess);
+    return () => {
+      window.removeEventListener('pos-sync-success', handleSyncSuccess);
+    };
+  }, [showToast]);
 
   // Submit order handler
   const handleSubmitOrder = () => {
@@ -105,12 +135,14 @@ export default function App() {
     sync.setApiUrl(newUrl);
     setProducts(updatedProducts);
     localStorage.setItem('POS_MENU', JSON.stringify(updatedProducts));
+    saveCatalog(updatedProducts).catch(() => {});
 
     if (newUrl) {
       const synced = await sync.saveProductsToSheet(newUrl, updatedProducts);
       if (synced && synced.length > 0) {
         setProducts(synced);
         localStorage.setItem('POS_MENU', JSON.stringify(synced));
+        saveCatalog(synced).catch(() => {});
         showToast('✓ Menu Berhasil Disinkronkan ke Sheet');
       }
       sync.processQueue();
@@ -123,6 +155,7 @@ export default function App() {
     if (fetched && fetched.length > 0) {
       setProducts(fetched);
       localStorage.setItem('POS_MENU', JSON.stringify(fetched));
+      saveCatalog(fetched).catch(() => {});
       return fetched;
     }
     return null;
