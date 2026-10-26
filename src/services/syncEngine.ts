@@ -19,6 +19,10 @@ export interface SyncEngineState {
 
 type Subscriber = (state: SyncEngineState) => void;
 
+// Network timeout constants tuned for mobile cellular & low-speed networks
+const ORDER_SYNC_TIMEOUT_MS = 25000;
+const FETCH_TIMEOUT_MS = 15000;
+
 class SyncEngineService {
   private queue: QueuedOrder[] = [];
   private isSyncing = false;
@@ -26,6 +30,7 @@ class SyncEngineService {
   private apiUrl = '';
   private isReady = false;
   private subscribers: Set<Subscriber> = new Set();
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.init();
@@ -50,7 +55,7 @@ class SyncEngineService {
       if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
         setTimeout(() => {
           this.processQueue();
-        }, 800);
+        }, 1200);
       }
     } catch (err) {
       console.warn('SyncEngine init note:', err);
@@ -58,12 +63,18 @@ class SyncEngineService {
       this.notify();
     }
 
-    // Auto-sync when device regains connectivity
+    // Auto-sync when device regains connectivity with 1.5s cellular radio warmup
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        if (this.queue.length > 0 && this.apiUrl) {
-          this.processQueue();
+        if (this.retryTimer) {
+          clearTimeout(this.retryTimer);
+          this.retryTimer = null;
         }
+        setTimeout(() => {
+          if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
+            this.processQueue();
+          }
+        }, 1500);
       });
     }
   }
@@ -111,7 +122,6 @@ class SyncEngineService {
     // 2. Asynchronous write-through to IndexedDB disk (Crash-Proof)
     try {
       await saveQueueOrder(order);
-      // Fallback mirror without large blob to prevent localStorage quota crash
       try {
         localStorage.setItem(
           'POS_QUEUE_META',
@@ -133,6 +143,11 @@ class SyncEngineService {
       return false;
     }
 
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
     this.isSyncing = true;
     this.hasSyncError = false;
     this.notify();
@@ -142,12 +157,18 @@ class SyncEngineService {
 
     while (activeQueue.length > 0) {
       const itemToSync = activeQueue[0];
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), ORDER_SYNC_TIMEOUT_MS);
+
       try {
         const res = await fetch(this.apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(itemToSync),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
+
         const data = await res.json();
         if (data.status === 'ok') {
           activeQueue.shift();
@@ -162,10 +183,21 @@ class SyncEngineService {
           throw new Error('Apps Script returned non-ok status');
         }
       } catch (err) {
-        console.warn('Sync queue error:', err);
+        clearTimeout(timeoutId);
+        console.warn('Sync queue error (low speed / timeout / network drop):', err);
         this.hasSyncError = true;
         this.isSyncing = false;
         this.notify();
+
+        // If still online, schedule gentle auto-retry in 12s on slow network
+        if (navigator.onLine && !this.retryTimer && this.queue.length > 0) {
+          this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            if (this.queue.length > 0 && navigator.onLine) {
+              this.processQueue();
+            }
+          }, 12000);
+        }
         return false;
       }
     }
@@ -188,17 +220,24 @@ class SyncEngineService {
 
   public async saveProductsToSheet(url: string, products: Product[]): Promise<Product[] | null> {
     if (!url) return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'saveProducts', products }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+
       const data = await res.json();
       if (data.status === 'ok' && Array.isArray(data.products) && data.products.length > 0) {
         return data.products.map((p: Product) => ({ ...p, original_name: p.name }));
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.warn('Save products to sheet error:', err);
     }
     return null;
@@ -207,13 +246,21 @@ class SyncEngineService {
   public async fetchConfigFromSheet(urlOverride?: string): Promise<Product[] | null> {
     const url = urlOverride || this.apiUrl;
     if (!url) return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     try {
-      const res = await fetch(`${url}?action=getConfig`);
+      const res = await fetch(`${url}?action=getConfig`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
       const data = await res.json();
       if (Array.isArray(data.products) && data.products.length > 0) {
         return data.products.map((p: Product) => ({ ...p, original_name: p.name }));
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.warn('Fetch config from sheet error:', err);
     }
     return null;
@@ -222,10 +269,13 @@ class SyncEngineService {
   public async fetchHistoryFromSheet(urlOverride?: string): Promise<SalesHistoryItem[] | null> {
     const url = urlOverride || this.apiUrl;
     if (!url) return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     try {
       let rawOrders: any[] = [];
       try {
-        const res = await fetch(`${url}?action=getHistory`);
+        const res = await fetch(`${url}?action=getHistory`, { signal: controller.signal });
         const data = await res.json();
         if (Array.isArray(data)) rawOrders = data;
         else if (Array.isArray(data.orders)) rawOrders = data.orders;
@@ -237,7 +287,7 @@ class SyncEngineService {
 
       if (!rawOrders || rawOrders.length === 0) {
         try {
-          const res2 = await fetch(`${url}?action=getOrders`);
+          const res2 = await fetch(`${url}?action=getOrders`, { signal: controller.signal });
           const data2 = await res2.json();
           if (Array.isArray(data2)) rawOrders = data2;
           else if (Array.isArray(data2.orders)) rawOrders = data2.orders;
@@ -245,6 +295,8 @@ class SyncEngineService {
           else if (Array.isArray(data2.transactions)) rawOrders = data2.transactions;
         } catch (_) {}
       }
+
+      clearTimeout(timeoutId);
 
       if (rawOrders && rawOrders.length > 0) {
         return rawOrders.map((row: any, idx: number) => {
@@ -301,6 +353,7 @@ class SyncEngineService {
         });
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.warn('Fetch history from sheet error:', err);
     }
     return null;

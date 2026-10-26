@@ -37,30 +37,6 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
   onSubmit,
 }) => {
   const [isCameraActionOpen, setIsCameraActionOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleOpenNativePicker = () => {
-    triggerHaptic('light');
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleNativeFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    try {
-      const base64 = await compressImageToJpeg(file);
-      triggerHaptic('success');
-      onPhotoCaptured(base64);
-    } catch (err) {
-      console.warn('Failed to compress image:', err);
-    } finally {
-      e.target.value = '';
-    }
-  };
 
   const hasPhoto = Boolean(photoBase64);
   const isSubmitDisabled = totalQty === 0 || !hasPhoto;
@@ -129,17 +105,8 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
             </button>
           </div>
 
-          {/* Native Media Selector (Camera & Gallery via Native UI Popup) */}
+          {/* Native Media Selector (Camera & Gallery Action Sheet) */}
           <div className="flex items-center gap-1.5 shrink-0 select-none touch-manipulation">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleNativeFileChange}
-              className="hidden"
-              aria-hidden="true"
-            />
-
             {hasPhoto ? (
               <div className="flex items-center gap-1">
                 <button
@@ -161,9 +128,12 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
 
                 <button
                   type="button"
-                  onClick={handleOpenNativePicker}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setIsCameraActionOpen(true);
+                  }}
                   className="pressable h-10 px-2.5 rounded-xl bg-[#F2F2F7] hover:bg-slate-200/80 border border-black/5 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95"
-                  title="Ganti Bukti (Buka Popup UI Asli Kamera / Galeri)"
+                  title="Ganti Bukti (Kamera / Galeri)"
                 >
                   <Camera className="w-3.5 h-3.5" />
                   <span>Ganti</span>
@@ -172,13 +142,16 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={handleOpenNativePicker}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsCameraActionOpen(true);
+                }}
                 className={`pressable h-10 px-3 sm:px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition active:scale-[0.98] shadow-2xs ${
                   totalQty > 0
                     ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 animate-pulse'
                     : 'bg-blue-50/90 text-[#007AFF] border-blue-200/80 hover:bg-blue-100'
                 }`}
-                title="Buka Popup UI Asli (Kamera / Galeri)"
+                title="Lampirkan Bukti (Kamera / Galeri)"
               >
                 <Camera className="w-4 h-4 shrink-0" />
                 <span className="whitespace-nowrap">{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti Tunai'}</span>

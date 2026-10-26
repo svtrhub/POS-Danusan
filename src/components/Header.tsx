@@ -49,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   }
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-30 shrink-0 h-16 bg-white border-b border-black/8 shadow-[0_1px_4px_rgba(0,0,0,0.03)]">
+    <header className="sticky top-0 left-0 right-0 z-30 shrink-0 bg-white border-b border-black/8 shadow-[0_1px_4px_rgba(0,0,0,0.03)] pt-[env(safe-area-inset-top,0px)]">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 h-16 flex items-center justify-between gap-1.5 sm:gap-2">
         {/* Left: Clickable POS DANUSAN logotext to open PWA guide window */}
         <button
