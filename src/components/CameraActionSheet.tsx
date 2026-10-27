@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { compressImageToJpeg } from '../utils/media';
 import { triggerHaptic } from '../utils/haptics';
@@ -16,8 +16,6 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
   onPhotoCaptured,
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -26,10 +24,24 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
 
     try {
       setIsProcessing(true);
-      const base64 = await compressImageToJpeg(file);
-      triggerHaptic('success');
-      onPhotoCaptured(base64);
-      onClose();
+      let base64 = '';
+      try {
+        base64 = await compressImageToJpeg(file);
+      } catch (compressErr) {
+        console.warn('Compression failed, using direct reader fallback:', compressErr);
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      if (base64) {
+        triggerHaptic('success');
+        onPhotoCaptured(base64);
+        onClose();
+      }
     } catch (err) {
       console.warn('Failed to process image:', err);
     } finally {
@@ -39,29 +51,15 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
 
   const handleCameraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = '';
-    handleProcessFile(file);
+    if (file) {
+      handleProcessFile(file);
+    }
   };
 
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = '';
-    handleProcessFile(file);
-  };
-
-  const triggerCameraInput = () => {
-    triggerHaptic('light');
-    if (cameraInputRef.current) {
-      cameraInputRef.current.value = '';
-      cameraInputRef.current.click();
-    }
-  };
-
-  const triggerGalleryInput = () => {
-    triggerHaptic('light');
-    if (galleryInputRef.current) {
-      galleryInputRef.current.value = '';
-      galleryInputRef.current.click();
+    if (file) {
+      handleProcessFile(file);
     }
   };
 
@@ -72,25 +70,6 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
       role="dialog"
       aria-modal="true"
     >
-      {/* Hidden file inputs: separated to guarantee native camera trigger vs gallery */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleCameraChange}
-        className="hidden"
-        aria-hidden="true"
-      />
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleGalleryChange}
-        className="hidden"
-        aria-hidden="true"
-      />
-
       <div
         className="w-full max-w-xs sm:max-w-sm pb-[calc(10px+env(safe-area-inset-bottom,0px))] sm:pb-0"
         onClick={(e) => e.stopPropagation()}
@@ -104,25 +83,42 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
             </div>
           ) : (
             <>
-              {/* Action 1: Ambil foto */}
-              <button
-                type="button"
-                onClick={triggerCameraInput}
-                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation"
+              {/* Action 1: Ambil foto via native label */}
+              <label
+                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation cursor-pointer"
+                onClick={() => triggerHaptic('light')}
               >
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onClick={(e) => {
+                    (e.target as HTMLInputElement).value = '';
+                  }}
+                  onChange={handleCameraChange}
+                  className="sr-only"
+                />
                 <Camera className="w-5 h-5 text-slate-700 stroke-[2]" />
                 <span>Ambil foto</span>
-              </button>
+              </label>
 
-              {/* Action 2: Pilih Galeri */}
-              <button
-                type="button"
-                onClick={triggerGalleryInput}
-                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation"
+              {/* Action 2: Pilih Galeri via native label */}
+              <label
+                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation cursor-pointer"
+                onClick={() => triggerHaptic('light')}
               >
+                <input
+                  type="file"
+                  accept="image/*"
+                  onClick={(e) => {
+                    (e.target as HTMLInputElement).value = '';
+                  }}
+                  onChange={handleGalleryChange}
+                  className="sr-only"
+                />
                 <ImageIcon className="w-5 h-5 text-slate-700 stroke-[2]" />
                 <span>Pilih Galeri</span>
-              </button>
+              </label>
             </>
           )}
         </div>

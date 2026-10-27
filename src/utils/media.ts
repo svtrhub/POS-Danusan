@@ -11,81 +11,55 @@ export async function compressImageToJpeg(
   quality = 0.60
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    // If browser supports createImageBitmap, use it for faster background decode
-    if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
-      createImageBitmap(file)
-        .then((bitmap) => {
-          try {
-            const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-            canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const reader = new FileReader();
 
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              return reject(new Error('Canvas 2D context not available'));
-            }
-
-            ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-            bitmap.close();
-            resolve(compressedBase64);
-          } catch (err) {
-            fallbackFileReader(file, maxDimension, quality, resolve, reject);
-          }
-        })
-        .catch(() => {
-          fallbackFileReader(file, maxDimension, quality, resolve, reject);
-        });
-      return;
-    }
-
-    fallbackFileReader(file, maxDimension, quality, resolve, reject);
-  });
-}
-
-function fallbackFileReader(
-  file: File,
-  maxDimension: number,
-  quality: number,
-  resolve: (base64: string) => void,
-  reject: (reason?: any) => void
-) {
-  const reader = new FileReader();
-
-  reader.onload = (event) => {
-    const src = event.target?.result;
-    if (typeof src !== 'string') {
-      return reject(new Error('Failed to read file as data URL'));
-    }
-
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(img.width * scale));
-      canvas.height = Math.max(1, Math.round(img.height * scale));
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        return reject(new Error('Canvas 2D context not available'));
+    reader.onload = (event) => {
+      const src = event.target?.result;
+      if (typeof src !== 'string') {
+        return reject(new Error('Failed to read file as data URL'));
       }
 
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-      resolve(compressedBase64);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const origWidth = img.naturalWidth || img.width;
+          const origHeight = img.naturalHeight || img.height;
+
+          if (!origWidth || !origHeight) {
+            return resolve(src);
+          }
+
+          const scale = Math.min(1, maxDimension / Math.max(origWidth, origHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(origWidth * scale));
+          canvas.height = Math.max(1, Math.round(origHeight * scale));
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            return resolve(src);
+          }
+
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedBase64);
+        } catch {
+          // If canvas processing throws, resolve raw data URL so image is never lost
+          resolve(src);
+        }
+      };
+
+      img.onerror = () => {
+        // If image loading fails, resolve raw data URL as fallback
+        resolve(src);
+      };
+
+      img.src = src;
     };
 
-    img.onerror = () => {
-      reject(new Error('Failed to load image element'));
+    reader.onerror = () => {
+      reject(new Error('FileReader failed'));
     };
 
-    img.src = src;
-  };
-
-  reader.onerror = () => {
-    reject(new Error('FileReader failed'));
-  };
-
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 }

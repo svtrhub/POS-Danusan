@@ -169,6 +169,12 @@ export default function App() {
     }
   };
 
+  const handlePhotoCaptured = (base64: string) => {
+    const isReplacing = Boolean(orderSession.draft.photoBase64);
+    orderSession.setPhotoBase64(base64);
+    showToast(isReplacing ? 'Foto bukti berhasil diperbarui' : 'Foto bukti berhasil disimpan');
+  };
+
   return (
     <div className="h-screen h-[100dvh] w-full bg-[#F2F2F7] flex flex-col font-sans select-none overflow-hidden overscroll-none">
       {/* Toast Notification */}
@@ -238,7 +244,7 @@ export default function App() {
             showToast('Keranjang direset');
           }}
           onPaymentChange={orderSession.setPaymentMethod}
-          onPhotoCaptured={orderSession.setPhotoBase64}
+          onPhotoCaptured={handlePhotoCaptured}
           onViewPhoto={() => setIsPhotoOpen(true)}
           onToggleDiscount={orderSession.toggleDiscount}
           onSelectDiscountPreset={orderSession.setDiscountAmount}
@@ -256,7 +262,7 @@ export default function App() {
         discountEnabled={orderSession.draft.discountEnabled}
         discount={orderSession.draft.discount}
         onPaymentChange={orderSession.setPaymentMethod}
-        onPhotoCaptured={orderSession.setPhotoBase64}
+        onPhotoCaptured={handlePhotoCaptured}
         onViewPhoto={() => setIsPhotoOpen(true)}
         onToggleDiscount={orderSession.toggleDiscount}
         onSelectDiscountPreset={orderSession.setDiscountAmount}
@@ -310,10 +316,7 @@ export default function App() {
       <CameraActionSheet
         isOpen={isRetakeActionOpen}
         onClose={() => setIsRetakeActionOpen(false)}
-        onPhotoCaptured={(base64) => {
-          orderSession.setPhotoBase64(base64);
-          showToast('Foto bukti diperbarui');
-        }}
+        onPhotoCaptured={handlePhotoCaptured}
         title="Ganti Bukti Pembayaran"
       />
 
