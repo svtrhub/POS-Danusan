@@ -221,47 +221,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Section 2: QRIS Merchant */}
-          <div className="space-y-2 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl">
+          <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
               <QrCode className="w-3.5 h-3.5 text-[#007AFF]" />
-              <span>Gambar QRIS</span>
+              <span>GAMBAR QRIS</span>
             </label>
 
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-18 bg-white border border-slate-200 rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1 shadow-2xs">
-                <img
-                  src={customQrisImage || DEFAULT_QRIS_DATA}
-                  alt="QRIS"
-                  className="w-full h-full object-contain rounded-lg"
-                />
-              </div>
-
-              <div className="flex-1 space-y-1.5">
-                <label className="cursor-pointer select-none pressable w-full h-9 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-2xs">
-                  <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
-                  <span>Ganti Gambar QRIS</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleQrisFileChange}
-                    className="sr-only"
+            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-18 bg-white border border-slate-200 rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1 shadow-2xs">
+                  <img
+                    src={customQrisImage || DEFAULT_QRIS_DATA}
+                    alt="QRIS"
+                    className="w-full h-full object-contain rounded-lg"
                   />
-                </label>
+                </div>
 
-                {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('warning');
-                      onResetQrisImage();
-                      setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
-                    }}
-                    className="pressable w-full h-7 px-2 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Kembalikan ke Bawaan</span>
-                  </button>
-                )}
+                <div className="flex-1 space-y-1.5">
+                  <label className="cursor-pointer select-none pressable w-full h-9 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
+                    <span>Ganti Gambar QRIS</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleQrisFileChange}
+                      className="sr-only"
+                    />
+                  </label>
+
+                  {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('warning');
+                        onResetQrisImage();
+                        setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
+                      }}
+                      className="pressable w-full h-7 px-2 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Kembalikan ke Bawaan</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

@@ -86,30 +86,38 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
   return (
     <aside className="hidden md:flex flex-col w-[360px] lg:w-[380px] shrink-0 h-full max-h-full overflow-hidden bg-white border-l border-black/8 select-none shadow-xs">
       {/* Top Header of Sidebar */}
-      <div className="h-12 px-4 flex items-center justify-between border-b border-black/6 bg-white shrink-0">
+      <div className="h-12 px-3.5 sm:px-4 flex items-center justify-between border-b border-black/6 bg-white shrink-0 select-none">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-slate-800 tracking-tight">
             Pesanan Kasir
           </h2>
-          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100/70 text-[#007AFF] num">
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#007AFF] border border-blue-200/60 num">
             {totalQty} item
           </span>
         </div>
 
-        {totalQty > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('warning');
-              onClearCart();
-            }}
-            className="pressable text-xs font-semibold text-rose-500 hover:text-rose-600 flex items-center gap-1 transition active:scale-95"
-            title="Hapus Semua Pesanan"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Reset</span>
-          </button>
-        )}
+        {/* Reset Button: Guaranteed touch target, clear active/disabled state, and always reliable */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (totalQty === 0 && !hasPhoto && !discountEnabled) return;
+            triggerHaptic('warning');
+            onClearCart();
+          }}
+          disabled={totalQty === 0 && !hasPhoto && !discountEnabled}
+          className={`pressable h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-bold transition-all touch-manipulation cursor-pointer ${
+            totalQty > 0 || hasPhoto || discountEnabled
+              ? 'bg-rose-50 text-rose-600 border border-rose-200/80 hover:bg-rose-100 active:scale-95 shadow-2xs'
+              : 'opacity-40 text-slate-400 border border-transparent cursor-not-allowed pointer-events-none'
+          }`}
+          title={totalQty > 0 || hasPhoto ? 'Reset Semua Pesanan & Bukti' : 'Keranjang Kosong'}
+          aria-label="Reset Keranjang"
+        >
+          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+          <span>Reset</span>
+        </button>
       </div>
 
       {/* Itemized Order List (Scrollable) */}

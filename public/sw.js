@@ -1,5 +1,5 @@
-// Danusan POS Service Worker v5 (Low-Speed Network Optimized + Cross-OS PWA)
-const CACHE_NAME = 'danusan-pos-v5';
+// Danusan POS Service Worker v6 (Stale-Free Deployments + Low-Speed Network Optimized)
+const CACHE_NAME = 'danusan-pos-v6';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,12 @@ const STATIC_ASSETS = [
   './qris-default.png'
 ];
 
+self.addEventListener('message', (event) => {
+  if (event.data && (event.data === 'SKIP_WAITING' || event.data.type === 'SKIP_WAITING')) {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -26,7 +32,6 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  self.skipWaiting();
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
@@ -48,45 +53,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Navigation Requests (index.html / root): Network with fast 1.8s timeout fallback to cache
+  // 2. Navigation Requests (index.html / root): Fresh Network-First with offline cache fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      new Promise((resolve) => {
-        let isResolved = false;
-
-        const timeoutId = setTimeout(() => {
-          if (!isResolved) {
-            caches.match('./index.html').then((cached) => {
-              if (cached) {
-                isResolved = true;
-                resolve(cached);
-              }
-            });
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
-        }, 1800);
-
-        fetch(event.request)
-          .then((networkResponse) => {
-            clearTimeout(timeoutId);
-            if (!isResolved) {
-              isResolved = true;
-              if (networkResponse && networkResponse.status === 200) {
-                const clone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-              }
-              resolve(networkResponse);
-            }
-          })
-          .catch(() => {
-            clearTimeout(timeoutId);
-            if (!isResolved) {
-              isResolved = true;
-              caches.match('./index.html').then((cached) => {
-                resolve(cached || caches.match('/index.html'));
-              });
-            }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match('./index.html').then((cached) => {
+            return cached || caches.match('/index.html') || caches.match('./');
           });
-      })
+        })
     );
     return;
   }

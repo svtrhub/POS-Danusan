@@ -25,23 +25,40 @@
     <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
     <script>
-      // Clean, resilient PWA Service Worker Registration
+      // Clean, resilient PWA Service Worker Registration with Auto-Update for Deployments
       if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
         window.addEventListener('load', function() {
           try {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-              for (var i = 0; i < registrations.length; i++) {
-                var reg = registrations[i];
-                if (reg && reg.active && reg.active.scriptURL && reg.active.scriptURL.indexOf('?v=') !== -1) {
-                  reg.unregister();
-                }
-              }
-            }).catch(function() {});
-
             navigator.serviceWorker.register('./sw.js')
+              .then(function(registration) {
+                // If there's already a waiting worker, activate it
+                if (registration.waiting) {
+                  registration.waiting.postMessage('SKIP_WAITING');
+                }
+
+                // Listen for new worker installation
+                registration.addEventListener('updatefound', function() {
+                  var newWorker = registration.installing;
+                  if (newWorker) {
+                    newWorker.addEventListener('statechange', function() {
+                      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        newWorker.postMessage('SKIP_WAITING');
+                      }
+                    });
+                  }
+                });
+              })
               .catch(function(err) {
                 console.warn('PWA SW note:', err);
               });
+
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+              if (!refreshing) {
+                refreshing = true;
+                window.location.reload();
+              }
+            });
           } catch (e) {
             console.warn('PWA setup note:', e);
           }

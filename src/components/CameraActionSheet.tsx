@@ -71,10 +71,10 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
       aria-modal="true"
     >
       <div
-        className="w-full max-w-xs sm:max-w-sm pb-[calc(10px+env(safe-area-inset-bottom,0px))] sm:pb-0"
+        className="w-full max-w-xs sm:max-w-sm mx-auto pb-[calc(12px+env(safe-area-inset-bottom,0px))] sm:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Main Action Group Card - Ultra Clean & Minimalist */}
+        {/* Main Action Group Card - Ultra Clean with exactly two action labels */}
         <div className="bg-white rounded-2xl shadow-2xl border border-black/8 overflow-hidden divide-y divide-black/6">
           {isProcessing ? (
             <div className="h-24 flex flex-col items-center justify-center gap-2 text-slate-600 bg-white">
@@ -83,9 +83,9 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
             </div>
           ) : (
             <>
-              {/* Action 1: Ambil foto via native label */}
+              {/* Action 1: Ambil foto via native label (Focused Element - Centered) */}
               <label
-                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation cursor-pointer"
+                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 text-center bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation cursor-pointer"
                 onClick={() => triggerHaptic('light')}
               >
                 <input
@@ -98,13 +98,13 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
                   onChange={handleCameraChange}
                   className="sr-only"
                 />
-                <Camera className="w-5 h-5 text-slate-700 stroke-[2]" />
-                <span>Ambil foto</span>
+                <Camera className="w-5 h-5 text-slate-700 stroke-[2] shrink-0" />
+                <span className="text-center">Ambil foto</span>
               </label>
 
-              {/* Action 2: Pilih Galeri via native label */}
+              {/* Action 2: Pilih Galeri via native label (Centered) */}
               <label
-                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation cursor-pointer"
+                className="pressable w-full h-14 px-4 flex items-center justify-center gap-2.5 text-center bg-white hover:bg-slate-50 active:bg-slate-100 transition select-none text-slate-800 text-sm sm:text-[15px] font-semibold touch-manipulation cursor-pointer"
                 onClick={() => triggerHaptic('light')}
               >
                 <input
@@ -116,8 +116,8 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
                   onChange={handleGalleryChange}
                   className="sr-only"
                 />
-                <ImageIcon className="w-5 h-5 text-slate-700 stroke-[2]" />
-                <span>Pilih Galeri</span>
+                <ImageIcon className="w-5 h-5 text-slate-700 stroke-[2] shrink-0" />
+                <span className="text-center">Pilih Galeri</span>
               </label>
             </>
           )}

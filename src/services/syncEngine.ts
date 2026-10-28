@@ -31,6 +31,7 @@ class SyncEngineService {
   private isReady = false;
   private subscribers: Set<Subscriber> = new Set();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAttempt = 0;
 
   constructor() {
     this.init();
@@ -41,9 +42,27 @@ class SyncEngineService {
       // 1. Run migration from legacy localStorage once if applicable
       await migrateFromLocalStorage();
 
-      // 2. Load API URL from IndexedDB or localStorage fallback
-      const savedUrl = await getConfig<string>('apiUrl');
-      this.apiUrl = (savedUrl || localStorage.getItem('POS_API_URL') || '').trim();
+      // 2. Load API URL with dual-layer bi-directional recovery (IndexedDB + localStorage)
+      const idbUrl = await getConfig<string>('apiUrl');
+      let localUrl = '';
+      try {
+        localUrl = localStorage.getItem('POS_API_URL') || '';
+      } catch (_) {}
+
+      const resolvedUrl = (idbUrl || localUrl || '').trim();
+      this.apiUrl = resolvedUrl;
+
+      // Self-heal both persistent stores if one was cleared
+      if (resolvedUrl) {
+        if (!idbUrl) {
+          await setConfig('apiUrl', resolvedUrl).catch(() => {});
+        }
+        if (!localUrl) {
+          try {
+            localStorage.setItem('POS_API_URL', resolvedUrl);
+          } catch (_) {}
+        }
+      }
 
       // 3. Rehydrate full crash-proof offline queue from IndexedDB
       const diskQueue = await getAllQueueOrders();
@@ -66,6 +85,7 @@ class SyncEngineService {
     // Auto-sync when device regains connectivity with 1.5s cellular radio warmup
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
+        this.retryAttempt = 0;
         if (this.retryTimer) {
           clearTimeout(this.retryTimer);
           this.retryTimer = null;
@@ -174,6 +194,7 @@ class SyncEngineService {
           activeQueue.shift();
           this.queue = [...activeQueue];
           syncedCount++;
+          this.retryAttempt = 0; // Reset backoff on successful transfer
 
           // Remove from persistent IndexedDB store
           await removeQueueOrder(itemToSync.order_id);
@@ -189,14 +210,18 @@ class SyncEngineService {
         this.isSyncing = false;
         this.notify();
 
-        // If still online, schedule gentle auto-retry in 12s on slow network
+        // Calculate exponential backoff with jitter for low-speed connections
+        this.retryAttempt = Math.min(this.retryAttempt + 1, 5);
+        const backoffMs = Math.min(30000, Math.round(Math.pow(1.8, this.retryAttempt) * 1500 + Math.random() * 1000));
+
+        // If still online, schedule gentle auto-retry
         if (navigator.onLine && !this.retryTimer && this.queue.length > 0) {
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null;
             if (this.queue.length > 0 && navigator.onLine) {
               this.processQueue();
             }
-          }, 12000);
+          }, backoffMs);
         }
         return false;
       }
@@ -204,6 +229,7 @@ class SyncEngineService {
 
     this.isSyncing = false;
     this.hasSyncError = false;
+    this.retryAttempt = 0;
     this.notify();
 
     // Dispatch custom event for user-facing toast notification
