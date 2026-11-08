@@ -221,6 +221,7 @@ export default function App() {
                   quantity={orderSession.draft.cart[prod.id] || 0}
                   onIncrement={orderSession.increment}
                   onDecrement={orderSession.decrement}
+                  onQuantityChange={orderSession.setQuantity}
                 />
               ))}
             </div>
@@ -239,6 +240,7 @@ export default function App() {
           discount={orderSession.draft.discount}
           onIncrement={orderSession.increment}
           onDecrement={orderSession.decrement}
+          onQuantityChange={orderSession.setQuantity}
           onClearCart={() => {
             orderSession.clearCart();
             showToast('Keranjang direset');

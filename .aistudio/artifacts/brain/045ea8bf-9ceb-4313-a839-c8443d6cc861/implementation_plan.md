@@ -1,28 +1,25 @@
-# POS Danusan - Stability, Deployment & Low-Speed Network Resilience Plan
+# Native Numeric Keyboard Input for Menu Quantities
 
-Comprehensive architectural solution addressing deployment caching inconsistencies on GitHub Pages, dual-layer persistent storage for Google Apps Script URLs, hardened low-bandwidth offline synchronization, and responsive camera modal alignment.
+Comprehensive implementation plan to introduce direct keyboard numeric quantity editing across product cards and the checkout panel, featuring OS-native number pads, auto-selection on tap, and robust cart state synchronization.
 
 ---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural decisions were confirmed via interactive clarification:
-> - **GitHub Deployments**: Service Worker will adopt a strict Network-First strategy for the HTML entry point (`index.html`) paired with background cache updates, an instant update listener, and automatic cache invalidation to prevent stale builds.
-> - **Apps Script URL Persistence**: Permanent dual storage in IndexedDB (`app_config_store`) and `localStorage` (`POS_API_URL`) with bidirectional fallback recovery, preventing URL loss during browser cache wipes.
-> - **Camera Action Sheet**: Responsive ergonomic alignment featuring an iOS-native bottom sheet on mobile devices (`< sm`) and an optically centered modal on tablets/desktops (`sm:` and up).
+> The following decisions were confirmed via interactive clarification:
+> - **Interaction Style**: Inline editable input replacing static quantity text with automatic text selection (`e.target.select()`) on focus for immediate one-tap overwriting.
+> - **Scope**: Enabled across both **Product Cards** (main catalog grid) and **Tablet Order Panel** (iPad/desktop cart sidebar).
+> - **Zero & Blank Handling**: If the user clears the input or types `0`, the item quantity resets to 0 and is cleanly removed from the active cart on blur or Enter key press.
+> - **Native OS Keyboard**: Triggered using HTML5 attributes `inputMode="numeric"` and `pattern="[0-9]*"` to guarantee native number pad presentation on iOS Safari and Android Chrome without alphabet keys.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Solves**: 
-  1. **Deployment Inconsistency**: GitHub Pages users frequently encounter stale application versions because aggressive Service Worker caches intercept navigation requests before new production bundles are recognized.
-  2. **Config Amnesia**: Browser storage cleanup or asynchronous race conditions occasionally cause the configured Apps Script Web App URL to disappear, breaking checkout sync.
-  3. **Low-Speed Network Degradation**: Intermittent 2G/3G field connections stall order submissions or cause sync engine errors without graceful backoff or clear visual feedback.
-  4. **Action Sheet Presentation**: Eradicate UI misalignment by presenting camera/gallery controls as a bottom sheet with safe-area insets on mobile, and an elegant centered card on iPad/desktop.
-- **Target Audience**: Student committee and community sales volunteers ("Danusan") operating POS checkout at outdoor stalls, university hallways, and events with unpredictable mobile reception.
-- **Key Value**: 100% offline-first reliability, instant GitHub deployment visibility, indestructible configuration persistence, and effortless payment proof capture.
+- **What It Solves**: In high-volume POS situations (e.g. customer orders 10 or 20 drinks), tapping the `+` button 20 times causes fatigue, touch latency, and accidental miscounts. Direct numeric input lets cashiers type large quantities in under a second while keeping standard single-tap increments intact.
+- **Target Audience**: Community and student cashiers operating fast-paced checkout queues during events and busy rush hours.
+- **Key Value**: 10x faster order entry for bulk quantities, native mobile touch ergonomics, zero layout shift, and seamless transition between tapping and typing.
 
 ---
 
@@ -30,98 +27,79 @@ Comprehensive architectural solution addressing deployment caching inconsistenci
 
 ### Key User Flows
 
-1. **Deploy & Instant Refresh Flow**:
-   - Volunteer visits the deployed GitHub Pages site.
-   - If an updated build is deployed, the Service Worker detects the update immediately via Network-First HTML validation.
-   - An automatic background refresh or unobtrusive toast (`Versi baru siap digunakan`) updates the app without manual cache-clearing gymnastics.
+1. **Card Stepper Tap vs. Direct Numeric Entry**:
+   - Single tap on the card body increments quantity by 1 (existing quick-add behavior).
+   - Tapping `+` or `-` buttons increments/decrements as usual.
+   - Tapping directly on the **center number** opens the OS numeric keypad immediately.
+   - The entire number is auto-selected so typing `8` instantly replaces `1` with `8` without needing to press backspace.
+   - Pressing `Enter` or tapping outside (blur) commits the value, triggers light haptic feedback, and updates cart totals.
 
-2. **Apps Script Config Self-Healing**:
-   - When the user configures the Apps Script URL in Settings, it is simultaneously committed to IndexedDB (`app_config_store`) and `localStorage`.
-   - On application boot, `syncEngine` inspects both stores: if either store holds the URL, it automatically rehydrates memory and repairs the missing store.
+2. **iPad / Desktop Cart Sidebar Direct Input**:
+   - In the cart list, tapping the item quantity count focuses a compact numeric input.
+   - Cashiers can quickly adjust quantities for any item in the order before taking payment.
 
-3. **Field Checkout on Low-Speed Network**:
-   - Volunteer processes an order offline or under 2G network conditions.
-   - The order with compressed proof JPEG (~35–45 KB) is instantly committed to IndexedDB disk and added to local sales history with a green confirmation toast.
-   - The top header pill reflects `Antrean: X` without blocking user transactions.
-   - When network stability returns, the sync engine fires background sync with exponential backoff and jitter.
+3. **Handling Deletions & Edge Cases**:
+   - Deleting the input content entirely or entering `0` removes the item from the cart on blur.
+   - Non-numeric characters are blocked natively and filtered via sanitization.
+   - Maximum quantity safety cap (e.g., 999) prevents accidental catastrophic typing errors.
 
-4. **Camera & Gallery Proof Attachment**:
-   - Tapping "Bukti QRIS" on a mobile device opens a sleek bottom sheet respecting the iPhone home indicator (`pb-[env(safe-area-inset-bottom)]`).
-   - On iPad/Desktop, it appears as a centered modal.
-   - Selecting "Ambil foto" or "Pilih Galeri" triggers the native device picker and updates the order proof cleanly.
-
-### Visual Identity & Theme
-- **Color Palette**: Apple System Gray background (`#F2F2F7`), crisp white cards (`#FFFFFF`), primary iOS Blue (`#007AFF`), emerald success accents (`#34C759`), and subtle hairline borders (`border-black/5` to `border-black/8`).
-- **Typography**: Clean system typeface pairing with tabular numbers (`tabular-nums font-mono`) for currency calculations, quantities, and timestamps.
-- **Layout Rhythm**: Dynamic viewport-bounded container (`100dvh`), zero horizontal scroll, and touch targets exceeding $44 \times 44\text{px}$.
+### Visual Identity & Touch Ergonomics
+- **No Layout Shift**: The inline input matches the exact dimensions, font weight, and color of the existing number display (`font-bold num text-[15px] sm:text-base text-center w-10 h-8`).
+- **iOS Safari Auto-Zoom Prevention**: Set input font size to at least 16px (`text-base`) on mobile touch devices to eliminate iOS Safari's default page zoom-in gesture on input focus.
+- **Native Look & Feel**: Disables browser-default spinners (`appearance-none` / `-webkit-inner-spin-button: none`) and provides a subtle active blue focus ring (`focus:ring-1 focus:ring-[#007AFF] focus:bg-white rounded-lg`).
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-### Decision 1: Service Worker Caching Strategy
-- **Chosen Approach**: Network-First for navigation requests (`mode: 'navigate'`) with a fast 1.2-second network timeout fallback to cache, combined with `skipWaiting()` and `clients.claim()` on activation.
-- **Why**: Eliminates GitHub Pages stale build lock-in while preserving instant offline launching if the user is completely disconnected.
-- **Alternative Rejected**: Cache-First for `index.html` (causes users to remain trapped on old versions until they manually purge browser site data).
+### Decision 1: Inline Input vs. Floating Modal Keypad
+- **Chosen Approach**: Direct inline input within the existing stepper slot.
+- **Why**: Zero visual clutter, no disruptive modal backdrops, and takes full advantage of the operating system's native hardware/software number pad (iOS number pad, Android Gboard numeric layout).
+- **Alternative Rejected**: Custom in-app popup keypad (creates unnecessary UI layers and slows down experienced users).
 
-### Decision 2: Dual Storage Redundancy for Apps Script URL
-- **Chosen Approach**: Write-through to both IndexedDB and `localStorage`, with automated bi-directional recovery during app initialization.
-- **Why**: Safari iOS aggressively purges IndexedDB under low disk space, whereas `localStorage` can be affected by browser cleaning tools. Maintaining both guarantees 99.99% survival across iOS/Android sessions.
-- **Alternative Rejected**: Storing solely in memory or relying only on single-key `localStorage`.
-
-### Decision 3: Low-Speed Network Sync Resilience
-- **Chosen Approach**: Exponential backoff with random jitter (2s, 4s, 8s, 16s, capped at 30s) + 25s HTTP request timeout + payload safety (~45 KB JPEG).
-- **Why**: Prevents request pile-ups and server connection exhaustion on spotty 3G/2G connections while ensuring batches never drop out of the queue.
+### Decision 2: Input Mode Specification
+- **Chosen Approach**: `<input type="text" inputMode="numeric" pattern="[0-9]*" />`.
+- **Why**: Standard `type="number"` exhibits inconsistent styling, unwanted scroll-wheel increment bugs, and platform quirks on mobile browsers. `type="text"` with `inputMode="numeric"` guarantees the pure 0-9 phone/pin pad across iOS Safari and Android without desktop scroll-wheel accidents.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 4. Technical Architecture & Component Changes
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        POS DANUSAN ARCHITECTURE                        │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│               DIRECT NUMERIC INPUT ARCHITECTURE        │
+└────────────────────────────────────────────────────────┘
 
- [ USER INTERACTION ]
-       │
-       ▼
- ┌───────────────┐         ┌────────────────────┐
- │  PaymentDock  │ ──────► │ CameraActionSheet  │ (Mobile: Bottom Sheet)
- │ TabletPanel   │         │ (Ambil / Galeri)   │ (Tablet: Centered)
- └───────┬───────┘         └─────────┬──────────┘
-         │                           │ (Compressed ~45KB Base64)
-         ▼                           ▼
- ┌──────────────────────────────────────────────┐
- │          OrderSession Hook (React)           │
- └──────────────────────┬───────────────────────┘
-                        │
-                        ▼ (Submit Order)
- ┌──────────────────────────────────────────────┐
- │         SyncEngine Service (Singleton)       │
- └──────────────┬───────────────────┬───────────┘
-                │                   │
-   (Dual-Layer Disk Write)    (Background Sync)
-                ▼                   ▼
-    ┌──────────────────┐    ┌───────────────────────────────┐
-    │ IndexedDB Store  │    │  Google Apps Script Endpoint  │
-    │  - sync_queue    │    │  - Action: submitOrder        │
-    │  - app_config    │    │  - Exponential Backoff        │
-    │  - catalog       │    │  - 25s Cellular Timeout       │
-    │ LocalStorage     │    └───────────────────────────────┘
-    │  - POS_API_URL   │
-    └──────────────────┘
+  [ ProductCard Stepper ]         [ TabletOrderPanel Row ]
+            │                               │
+            ▼                               ▼
+  <input inputMode="numeric" pattern="[0-9]*" autoSelect />
+            │                               │
+            └───────────────┬───────────────┘
+                            ▼
+               onQuantityChange(productId, qty)
+                            │
+                            ▼
+            ┌───────────────────────────────┐
+            │       useOrderSession         │
+            │   setQuantity(id, count)      │
+            └───────────────┬───────────────┘
+                            │
+                            ▼
+            ┌───────────────────────────────┐
+            │   IndexedDB & SessionStorage  │
+            │    Instant Cart Sync Engine   │
+            └───────────────────────────────┘
 ```
 
-### Components to Update
-1. **`public/sw.js` & `index.html`**:
-   - Cache version bump to `danusan-pos-v6`.
-   - Network-First navigation with quick fallback.
-   - PWA update notification and client reload sync.
-2. **`src/services/syncEngine.ts`**:
-   - Bi-directional sync recovery for `apiUrl` between IndexedDB and `localStorage`.
-   - Exponential backoff retry loop with network status detection.
-3. **`src/components/CameraActionSheet.tsx`**:
-   - Responsive styling: `items-end pb-[calc(10px+env(safe-area-inset-bottom,0px))] sm:items-center sm:pb-0`.
-   - Centered card presentation on tablet/desktop, smooth bottom sheet on mobile.
-4. **`src/services/indexedDBStorage.ts`**:
-   - Strengthen `getConfig` and `setConfig` reliability with error-resilient fallbacks.
+### Files to Update
+1. **`src/hooks/useOrderSession.ts`**:
+   - Add `setQuantity(productId: string, quantity: number)` action.
+   - Automatically cleans up cart entries when quantity reaches $\le 0$.
+2. **`src/components/ProductCard.tsx`**:
+   - Replace static `<span>{quantity}</span>` with controlled inline numeric input.
+   - Add `inputMode="numeric"`, `pattern="[0-9]*"`, auto-selection on focus, and click stopPropagation to avoid parent card toggle.
+3. **`src/components/TabletOrderPanel.tsx`**:
+   - Upgrade sidebar quantity span into the matching inline numeric input with `onQuantityChange`.
+4. **`src/App.tsx`**:
+   - Pass `orderSession.setQuantity` down to `ProductCard` and `TabletOrderPanel`.

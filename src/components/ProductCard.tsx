@@ -2,12 +2,14 @@ import React from 'react';
 import { Plus, Minus } from 'lucide-react';
 import { Product } from '../types';
 import { triggerHaptic } from '../utils/haptics';
+import { NumericQuantityInput } from './NumericQuantityInput';
 
 interface ProductCardProps {
   product: Product;
   quantity: number;
   onIncrement: (productId: string) => void;
   onDecrement: (productId: string) => void;
+  onQuantityChange: (productId: string, quantity: number) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -15,6 +17,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   quantity,
   onIncrement,
   onDecrement,
+  onQuantityChange,
 }) => {
   const isActive = quantity > 0;
 
@@ -81,13 +84,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <Minus className="w-4 h-4 stroke-[2.5]" />
         </button>
 
-        <span
-          className={`text-[15px] font-bold num select-none px-1 ${
+        <NumericQuantityInput
+          quantity={quantity}
+          onQuantityChange={(qty) => onQuantityChange(product.id, qty)}
+          ariaLabel={`Jumlah ${product.name}`}
+          className={`w-12 h-8 text-center text-base sm:text-[15px] rounded-lg bg-transparent focus:bg-white focus:ring-2 focus:ring-[#007AFF] focus:shadow-xs outline-none transition selection:bg-blue-200 ${
             isActive ? 'text-[#007AFF]' : 'text-slate-400'
           }`}
-        >
-          {quantity}
-        </span>
+        />
 
         <button
           type="button"

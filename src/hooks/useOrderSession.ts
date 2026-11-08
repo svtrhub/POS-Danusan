@@ -91,6 +91,19 @@ export function useOrderSession(products: Product[]) {
     });
   }, []);
 
+  const setQuantity = useCallback((productId: string, quantity: number) => {
+    setDraft((prev) => {
+      const nextCart = { ...prev.cart };
+      const safeQty = Math.max(0, Math.min(999, Math.floor(Number(quantity) || 0)));
+      if (safeQty <= 0) {
+        delete nextCart[productId];
+      } else {
+        nextCart[productId] = safeQty;
+      }
+      return { ...prev, cart: nextCart };
+    });
+  }, []);
+
   const clearCart = useCallback(() => {
     setDraft((prev) => ({
       ...prev,
@@ -181,6 +194,7 @@ export function useOrderSession(products: Product[]) {
     submitButtonText,
     increment,
     decrement,
+    setQuantity,
     clearCart,
     setPaymentMethod,
     setPhotoBase64,

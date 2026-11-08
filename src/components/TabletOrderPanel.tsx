@@ -12,6 +12,7 @@ import {
 import { Product } from '../types';
 import { DiscountDrawer } from './DiscountDrawer';
 import { CameraActionSheet } from './CameraActionSheet';
+import { NumericQuantityInput } from './NumericQuantityInput';
 import { triggerHaptic } from '../utils/haptics';
 import { compressImageToJpeg } from '../utils/media';
 
@@ -26,6 +27,7 @@ interface TabletOrderPanelProps {
   discount: number;
   onIncrement: (productId: string) => void;
   onDecrement: (productId: string) => void;
+  onQuantityChange: (productId: string, quantity: number) => void;
   onClearCart: () => void;
   onPaymentChange: (method: 'QRIS' | 'Cash') => void;
   onPhotoCaptured: (base64: string) => void;
@@ -47,6 +49,7 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
   discount,
   onIncrement,
   onDecrement,
+  onQuantityChange,
   onClearCart,
   onPaymentChange,
   onPhotoCaptured,
@@ -151,9 +154,12 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                   >
                     <Minus className="w-3 h-3" />
                   </button>
-                  <span className="w-5 text-center text-xs font-bold text-[#007AFF] num">
-                    {quantity}
-                  </span>
+                  <NumericQuantityInput
+                    quantity={quantity}
+                    onQuantityChange={(qty) => onQuantityChange(product.id, qty)}
+                    ariaLabel={`Jumlah ${product.name}`}
+                    className="w-7 h-6 text-center text-xs font-bold text-[#007AFF] num rounded bg-transparent focus:bg-blue-50 focus:ring-1 focus:ring-[#007AFF] outline-none transition selection:bg-blue-200"
+                  />
                   <button
                     type="button"
                     onClick={() => {
