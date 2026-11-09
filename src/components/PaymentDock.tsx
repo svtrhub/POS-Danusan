@@ -1,23 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Camera, QrCode, Banknote, Eye } from 'lucide-react';
-import { DiscountDrawer } from './DiscountDrawer';
 import { CameraActionSheet } from './CameraActionSheet';
 import { triggerHaptic } from '../utils/haptics';
-import { compressImageToJpeg } from '../utils/media';
 
 interface PaymentDockProps {
   totalQty: number;
   netTotal: number;
   paymentMethod: 'QRIS' | 'Cash';
   photoBase64: string;
-  discountEnabled: boolean;
-  discount: number;
   onPaymentChange: (method: 'QRIS' | 'Cash') => void;
   onPhotoCaptured: (base64: string) => void;
   onViewPhoto: () => void;
-  onToggleDiscount: (enabled: boolean) => void;
-  onSelectDiscountPreset: (amount: number) => void;
-  onCustomDiscountChange: (amount: number) => void;
   onSubmit: () => void;
 }
 
@@ -26,25 +19,21 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
   netTotal,
   paymentMethod,
   photoBase64,
-  discountEnabled,
-  discount,
   onPaymentChange,
   onPhotoCaptured,
   onViewPhoto,
-  onToggleDiscount,
-  onSelectDiscountPreset,
-  onCustomDiscountChange,
   onSubmit,
 }) => {
   const [isCameraActionOpen, setIsCameraActionOpen] = useState(false);
 
+  const isPhotoRequired = paymentMethod === 'QRIS';
   const hasPhoto = Boolean(photoBase64);
-  const isSubmitDisabled = totalQty === 0 || !hasPhoto;
+  const isSubmitDisabled = totalQty === 0 || (isPhotoRequired && !hasPhoto);
 
   let submitButtonText = 'Pilih Menu';
   if (totalQty > 0) {
-    if (!hasPhoto) {
-      submitButtonText = `${totalQty} barang · Lampirkan Bukti`;
+    if (isPhotoRequired && !hasPhoto) {
+      submitButtonText = `${totalQty} barang · Bukti QRIS`;
     } else {
       submitButtonText = `${totalQty} barang · Simpan Pesanan`;
     }
@@ -57,17 +46,8 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
   };
 
   return (
-    <section className="md:hidden fixed left-0 right-0 bottom-0 z-40 bg-white border-t border-black/8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
+    <section className="md:hidden fixed left-0 right-0 bottom-0 z-40 bg-white/95 backdrop-blur-md border-t border-black/8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
       <div className="max-w-xl mx-auto flex flex-col gap-2">
-        {/* Discount Disclosure Row */}
-        <DiscountDrawer
-          enabled={discountEnabled}
-          discount={discount}
-          onToggle={onToggleDiscount}
-          onSelectPreset={onSelectDiscountPreset}
-          onCustomChange={onCustomDiscountChange}
-        />
-
         {/* Controls Row: Apple Inset Segmented Payment & Camera */}
         <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
           {/* iOS UISegmentedControl for Payment */}
@@ -147,14 +127,14 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                   setIsCameraActionOpen(true);
                 }}
                 className={`pressable h-10 px-3 sm:px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition active:scale-[0.98] shadow-2xs ${
-                  totalQty > 0
+                  isPhotoRequired && totalQty > 0
                     ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 animate-pulse'
-                    : 'bg-blue-50/90 text-[#007AFF] border-blue-200/80 hover:bg-blue-100'
+                    : 'bg-[#F2F2F7] text-slate-700 border-black/5 hover:bg-slate-200/80'
                 }`}
-                title="Lampirkan Bukti (Kamera / Galeri)"
+                title={isPhotoRequired ? 'Lampirkan Bukti QRIS (Wajib)' : 'Lampirkan Bukti Tunai (Opsional)'}
               >
                 <Camera className="w-4 h-4 shrink-0" />
-                <span className="whitespace-nowrap">{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti Tunai'}</span>
+                <span className="whitespace-nowrap">{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti (Opsional)'}</span>
               </button>
             )}
           </div>

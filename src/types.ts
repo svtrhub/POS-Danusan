@@ -24,8 +24,8 @@ export interface QueuedOrder {
 
 export interface DraftState {
   cart: Record<string, number>;
-  discountEnabled: boolean;
-  discount: number;
+  discountEnabled?: boolean;
+  discount?: number;
   payment: 'QRIS' | 'Cash';
   photoBase64: string;
 }

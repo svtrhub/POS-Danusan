@@ -236,8 +236,6 @@ export default function App() {
           netTotal={orderSession.netTotal}
           paymentMethod={orderSession.draft.payment}
           photoBase64={orderSession.draft.photoBase64}
-          discountEnabled={orderSession.draft.discountEnabled}
-          discount={orderSession.draft.discount}
           onIncrement={orderSession.increment}
           onDecrement={orderSession.decrement}
           onQuantityChange={orderSession.setQuantity}
@@ -248,9 +246,6 @@ export default function App() {
           onPaymentChange={orderSession.setPaymentMethod}
           onPhotoCaptured={handlePhotoCaptured}
           onViewPhoto={() => setIsPhotoOpen(true)}
-          onToggleDiscount={orderSession.toggleDiscount}
-          onSelectDiscountPreset={orderSession.setDiscountAmount}
-          onCustomDiscountChange={orderSession.setDiscountAmount}
           onSubmit={handleSubmitOrder}
         />
       </div>
@@ -261,14 +256,9 @@ export default function App() {
         netTotal={orderSession.netTotal}
         paymentMethod={orderSession.draft.payment}
         photoBase64={orderSession.draft.photoBase64}
-        discountEnabled={orderSession.draft.discountEnabled}
-        discount={orderSession.draft.discount}
         onPaymentChange={orderSession.setPaymentMethod}
         onPhotoCaptured={handlePhotoCaptured}
         onViewPhoto={() => setIsPhotoOpen(true)}
-        onToggleDiscount={orderSession.toggleDiscount}
-        onSelectDiscountPreset={orderSession.setDiscountAmount}
-        onCustomDiscountChange={orderSession.setDiscountAmount}
         onSubmit={handleSubmitOrder}
       />
 

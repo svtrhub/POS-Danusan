@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   QrCode,
   Banknote,
@@ -10,11 +10,9 @@ import {
   Minus,
 } from 'lucide-react';
 import { Product } from '../types';
-import { DiscountDrawer } from './DiscountDrawer';
 import { CameraActionSheet } from './CameraActionSheet';
 import { NumericQuantityInput } from './NumericQuantityInput';
 import { triggerHaptic } from '../utils/haptics';
-import { compressImageToJpeg } from '../utils/media';
 
 interface TabletOrderPanelProps {
   products: Product[];
@@ -23,8 +21,6 @@ interface TabletOrderPanelProps {
   netTotal: number;
   paymentMethod: 'QRIS' | 'Cash';
   photoBase64: string;
-  discountEnabled: boolean;
-  discount: number;
   onIncrement: (productId: string) => void;
   onDecrement: (productId: string) => void;
   onQuantityChange: (productId: string, quantity: number) => void;
@@ -32,9 +28,6 @@ interface TabletOrderPanelProps {
   onPaymentChange: (method: 'QRIS' | 'Cash') => void;
   onPhotoCaptured: (base64: string) => void;
   onViewPhoto: () => void;
-  onToggleDiscount: (enabled: boolean) => void;
-  onSelectDiscountPreset: (amount: number) => void;
-  onCustomDiscountChange: (amount: number) => void;
   onSubmit: () => void;
 }
 
@@ -45,8 +38,6 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
   netTotal,
   paymentMethod,
   photoBase64,
-  discountEnabled,
-  discount,
   onIncrement,
   onDecrement,
   onQuantityChange,
@@ -54,9 +45,6 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
   onPaymentChange,
   onPhotoCaptured,
   onViewPhoto,
-  onToggleDiscount,
-  onSelectDiscountPreset,
-  onCustomDiscountChange,
   onSubmit,
 }) => {
   // Active items in cart
@@ -68,14 +56,15 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
       subtotal: p.price * cart[p.id],
     }));
 
+  const isPhotoRequired = paymentMethod === 'QRIS';
   const hasPhoto = Boolean(photoBase64);
-  const isSubmitDisabled = totalQty === 0 || !hasPhoto;
+  const isSubmitDisabled = totalQty === 0 || (isPhotoRequired && !hasPhoto);
 
   let submitButtonText = 'Simpan Pesanan';
   if (totalQty === 0) {
     submitButtonText = 'Pilih Menu';
-  } else if (!hasPhoto) {
-    submitButtonText = paymentMethod === 'QRIS' ? 'Wajib Foto Bukti QRIS' : 'Wajib Foto Bukti Tunai';
+  } else if (isPhotoRequired && !hasPhoto) {
+    submitButtonText = 'Wajib Foto Bukti QRIS';
   }
 
   const [isCameraActionOpen, setIsCameraActionOpen] = useState(false);
@@ -105,13 +94,13 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (totalQty === 0 && !hasPhoto && !discountEnabled) return;
+            if (totalQty === 0 && !hasPhoto) return;
             triggerHaptic('warning');
             onClearCart();
           }}
-          disabled={totalQty === 0 && !hasPhoto && !discountEnabled}
+          disabled={totalQty === 0 && !hasPhoto}
           className={`pressable h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-bold transition-all touch-manipulation cursor-pointer ${
-            totalQty > 0 || hasPhoto || discountEnabled
+            totalQty > 0 || hasPhoto
               ? 'bg-rose-50 text-rose-600 border border-rose-200/80 hover:bg-rose-100 active:scale-95 shadow-2xs'
               : 'opacity-40 text-slate-400 border border-transparent cursor-not-allowed pointer-events-none'
           }`}
@@ -193,16 +182,7 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
       </div>
 
       {/* Pinned Bottom Payment Section (ALWAYS 100% VISIBLE ON IPAD WITHOUT SCROLLING) */}
-      <div className="p-3 bg-slate-50/90 border-t border-black/8 space-y-2 shrink-0 mt-auto">
-        {/* Discount Section */}
-        <DiscountDrawer
-          enabled={discountEnabled}
-          discount={discount}
-          onToggle={onToggleDiscount}
-          onSelectPreset={onSelectDiscountPreset}
-          onCustomChange={onCustomDiscountChange}
-        />
-
+      <div className="p-3 bg-slate-50/90 border-t border-black/8 space-y-2.5 shrink-0 mt-auto">
         {/* Payment Method Switch & Proof Camera */}
         <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
           <div className="grid grid-cols-2 bg-[#E5E5EA] p-0.5 rounded-xl h-10 border border-black/5">
@@ -283,14 +263,14 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                   setIsCameraActionOpen(true);
                 }}
                 className={`pressable h-10 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition active:scale-[0.98] shadow-2xs ${
-                  totalQty > 0
+                  isPhotoRequired && totalQty > 0
                     ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 animate-pulse'
-                    : 'bg-white text-[#007AFF] border-blue-200 hover:bg-blue-50'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                 }`}
-                title="Lampirkan Bukti (Kamera / Galeri)"
+                title={isPhotoRequired ? 'Lampirkan Bukti QRIS (Wajib)' : 'Lampirkan Bukti Tunai (Opsional)'}
               >
-                <Camera className="w-4 h-4" />
-                <span>{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti Tunai'}</span>
+                <Camera className="w-4 h-4 text-slate-500" />
+                <span>{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti (Opsional)'}</span>
               </button>
             )}
           </div>

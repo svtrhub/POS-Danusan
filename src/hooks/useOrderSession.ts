@@ -3,8 +3,6 @@ import { Product, QueuedOrder, OrderItem, DraftState } from '../types';
 
 const INITIAL_DRAFT: DraftState = {
   cart: {},
-  discountEnabled: false,
-  discount: 0,
   payment: 'QRIS',
   photoBase64: '',
 };
@@ -51,21 +49,20 @@ export function useOrderSession(products: Product[]) {
       qty += item.quantity;
       gross += item.subtotal;
     });
-    const disc = draft.discountEnabled ? draft.discount || 0 : 0;
-    const net = Math.max(0, gross - disc);
-    return { totalQty: qty, grossTotal: gross, netTotal: net };
-  }, [activeItems, draft.discountEnabled, draft.discount]);
+    return { totalQty: qty, grossTotal: gross, netTotal: gross };
+  }, [activeItems]);
 
+  const isPhotoRequired = draft.payment === 'QRIS';
   const hasPhoto = Boolean(draft.photoBase64);
-  const isSubmitDisabled = totalQty === 0 || !hasPhoto;
+  const isSubmitDisabled = totalQty === 0 || (isPhotoRequired && !hasPhoto);
 
   const submitButtonText = useMemo(() => {
     if (totalQty === 0) return 'Pilih Menu';
-    if (!hasPhoto) {
-      return draft.payment === 'QRIS' ? 'Wajib Foto Bukti QRIS' : 'Wajib Foto Bukti Tunai';
+    if (isPhotoRequired && !hasPhoto) {
+      return 'Wajib Foto Bukti QRIS';
     }
     return 'Simpan Pesanan';
-  }, [totalQty, hasPhoto, draft.payment]);
+  }, [totalQty, hasPhoto, isPhotoRequired]);
 
   // Actions
   const increment = useCallback((productId: string) => {
@@ -108,8 +105,6 @@ export function useOrderSession(products: Product[]) {
     setDraft((prev) => ({
       ...prev,
       cart: {},
-      discountEnabled: false,
-      discount: 0,
       photoBase64: '',
     }));
   }, []);
@@ -122,22 +117,6 @@ export function useOrderSession(products: Product[]) {
     setDraft((prev) => ({ ...prev, photoBase64: base64 }));
   }, []);
 
-  const toggleDiscount = useCallback((enabled: boolean) => {
-    setDraft((prev) => ({
-      ...prev,
-      discountEnabled: enabled,
-      discount: enabled ? prev.discount || 1000 : 0,
-    }));
-  }, []);
-
-  const setDiscountAmount = useCallback((amount: number) => {
-    setDraft((prev) => ({
-      ...prev,
-      discountEnabled: true,
-      discount: Math.max(0, amount),
-    }));
-  }, []);
-
   // Format exact payload required by Google Sheets Apps Script
   const buildOrderPayload = useCallback((): QueuedOrder | null => {
     const items: OrderItem[] = activeItems.map((item) => ({
@@ -146,7 +125,8 @@ export function useOrderSession(products: Product[]) {
       unit_price: item.product.price,
     }));
 
-    if (!items.length || !draft.photoBase64) {
+    const isPhotoRequired = draft.payment === 'QRIS';
+    if (!items.length || (isPhotoRequired && !draft.photoBase64)) {
       return null;
     }
 
@@ -166,18 +146,16 @@ export function useOrderSession(products: Product[]) {
       order_id: orderId,
       timestamp,
       payment_method: draft.payment,
-      discount_total: draft.discountEnabled ? draft.discount || 0 : 0,
+      discount_total: 0,
       items,
-      photo_base64: draft.photoBase64,
-      photo_mime: 'image/jpeg',
+      photo_base64: draft.photoBase64 || '',
+      photo_mime: draft.photoBase64 ? 'image/jpeg' : '',
     };
-  }, [activeItems, draft.photoBase64, draft.payment, draft.discountEnabled, draft.discount]);
+  }, [activeItems, draft.photoBase64, draft.payment]);
 
   const resetAfterSubmit = useCallback(() => {
     setDraft((prev) => ({
       cart: {},
-      discountEnabled: false,
-      discount: 0,
       payment: prev.payment,
       photoBase64: '',
     }));
@@ -190,6 +168,7 @@ export function useOrderSession(products: Product[]) {
     grossTotal,
     netTotal,
     hasPhoto,
+    isPhotoRequired,
     isSubmitDisabled,
     submitButtonText,
     increment,
@@ -198,8 +177,6 @@ export function useOrderSession(products: Product[]) {
     clearCart,
     setPaymentMethod,
     setPhotoBase64,
-    toggleDiscount,
-    setDiscountAmount,
     buildOrderPayload,
     resetAfterSubmit,
   };

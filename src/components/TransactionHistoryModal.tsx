@@ -134,25 +134,6 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
     });
   }, [historyItems, paymentFilter, statusFilter, searchQuery]);
 
-  // Summary KPIs
-  const kpiStats = useMemo(() => {
-    const totalTransactions = filteredItems.length;
-    const netRevenue = filteredItems.reduce((acc, item) => acc + (item.net_total || 0), 0);
-    const totalDiscounts = filteredItems.reduce((acc, item) => acc + (item.discount_total || 0), 0);
-    const qrisCount = filteredItems.filter((i) => i.payment_method === 'QRIS').length;
-    const cashCount = filteredItems.filter((i) => i.payment_method === 'Cash').length;
-    const pendingCount = filteredItems.filter((i) => i.is_local_pending).length;
-
-    return {
-      totalTransactions,
-      netRevenue,
-      totalDiscounts,
-      qrisCount,
-      cashCount,
-      pendingCount,
-    };
-  }, [filteredItems]);
-
   const handleCopyScript = () => {
     const code = `/**
  * ==============================================================================
@@ -536,46 +517,6 @@ function jsonResponse(obj) {
             </div>
           </div>
         )}
-
-        {/* KPI Summary Cards */}
-        <div className="px-4 sm:px-6 py-3 bg-slate-50/80 border-b border-slate-200/80 shrink-0">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Total Pesanan
-              </div>
-              <div className="text-sm sm:text-base font-extrabold text-slate-900 num mt-0.5">
-                {kpiStats.totalTransactions} <span className="text-xs font-medium text-slate-400">transaksi</span>
-              </div>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Metode Bayar
-              </div>
-              <div className="flex items-center gap-2 mt-1 text-xs font-bold">
-                <span className="text-[#007AFF] flex items-center gap-1 num">
-                  <QrCode className="w-3 h-3" /> {kpiStats.qrisCount}
-                </span>
-                <span className="text-slate-300">/</span>
-                <span className="text-emerald-600 flex items-center gap-1 num">
-                  <Banknote className="w-3 h-3" /> {kpiStats.cashCount}
-                </span>
-              </div>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Total Diskon
-              </div>
-              <div className="text-sm sm:text-base font-extrabold text-slate-700 num mt-0.5 truncate">
-                {kpiStats.totalDiscounts > 0
-                  ? `-Rp ${kpiStats.totalDiscounts.toLocaleString('id-ID')}`
-                  : 'Rp 0'}
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Filter & Search Bar */}
         <div className="px-4 sm:px-6 py-2.5 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between shrink-0">

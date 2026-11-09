@@ -21,6 +21,7 @@ type Subscriber = (state: SyncEngineState) => void;
 
 // Network timeout constants tuned for mobile cellular & low-speed networks
 const ORDER_SYNC_TIMEOUT_MS = 25000;
+const ORDER_SYNC_TIMEOUT_FAST_MS = 10000; // Lightweight text-only payload (<1KB)
 const FETCH_TIMEOUT_MS = 15000;
 
 class SyncEngineService {
@@ -178,7 +179,8 @@ class SyncEngineService {
     while (activeQueue.length > 0) {
       const itemToSync = activeQueue[0];
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), ORDER_SYNC_TIMEOUT_MS);
+      const timeoutMs = itemToSync.photo_base64 ? ORDER_SYNC_TIMEOUT_MS : ORDER_SYNC_TIMEOUT_FAST_MS;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
         const res = await fetch(this.apiUrl, {
