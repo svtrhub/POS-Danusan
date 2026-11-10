@@ -13,21 +13,36 @@ export interface ActiveOrderItem {
   subtotal: number;
 }
 
+const DRAFT_SESSION_KEY = 'POS_DRAFT';
+const DRAFT_DISK_KEY = 'POS_DRAFT_PERSISTENT';
+
 export function useOrderSession(products: Product[]) {
   const [draft, setDraft] = useState<DraftState>(() => {
     try {
-      const saved = sessionStorage.getItem('POS_DRAFT');
-      if (saved) {
-        return JSON.parse(saved);
+      // 1. Fast session storage
+      const sessionSaved = sessionStorage.getItem(DRAFT_SESSION_KEY);
+      if (sessionSaved) {
+        return JSON.parse(sessionSaved);
+      }
+      // 2. Persistent disk fallback (survives Android LMK tab restarts during camera capture)
+      const diskSaved = localStorage.getItem(DRAFT_DISK_KEY);
+      if (diskSaved) {
+        return JSON.parse(diskSaved);
       }
     } catch (_) {}
     return INITIAL_DRAFT;
   });
 
-  // Sync draft to sessionStorage
+  // Dual-layer sync: sessionStorage + localStorage disk backup
   useEffect(() => {
     try {
-      sessionStorage.setItem('POS_DRAFT', JSON.stringify(draft));
+      const serialized = JSON.stringify(draft);
+      sessionStorage.setItem(DRAFT_SESSION_KEY, serialized);
+      if (Object.keys(draft.cart).length > 0 || draft.photoBase64) {
+        localStorage.setItem(DRAFT_DISK_KEY, serialized);
+      } else {
+        localStorage.removeItem(DRAFT_DISK_KEY);
+      }
     } catch (_) {}
   }, [draft]);
 
@@ -102,6 +117,10 @@ export function useOrderSession(products: Product[]) {
   }, []);
 
   const clearCart = useCallback(() => {
+    try {
+      sessionStorage.removeItem(DRAFT_SESSION_KEY);
+      localStorage.removeItem(DRAFT_DISK_KEY);
+    } catch (_) {}
     setDraft((prev) => ({
       ...prev,
       cart: {},
@@ -154,6 +173,10 @@ export function useOrderSession(products: Product[]) {
   }, [activeItems, draft.photoBase64, draft.payment]);
 
   const resetAfterSubmit = useCallback(() => {
+    try {
+      sessionStorage.removeItem(DRAFT_SESSION_KEY);
+      localStorage.removeItem(DRAFT_DISK_KEY);
+    } catch (_) {}
     setDraft((prev) => ({
       cart: {},
       payment: prev.payment,
