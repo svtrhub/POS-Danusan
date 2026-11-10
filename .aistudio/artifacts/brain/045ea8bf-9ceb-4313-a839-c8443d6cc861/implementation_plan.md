@@ -1,131 +1,90 @@
-# POS Danusan - Rapid Hectic Checkout & Low-Bandwidth Resilience Plan
+# Rencana Peningkatan Performa & Stabilitas Mode Offline POS Danusan
 
-Comprehensive architectural solution to remove redundant modal components, optimize checkout speed for hectic sales rush hours, make photo proofs optional for Cash while retaining QRIS verification, and guarantee 100% reliable 0ms local commits in low-bandwidth environments.
-
----
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> The following decisions were confirmed via interactive clarification:
-> - **Redundant Component Removal**: Remove the KPI summary cards (`Total Pesanan`, `Metode Bayar`, `Total Diskon`) from `TransactionHistoryModal`, reclaiming over 80px of vertical space and directing users immediately to the search filter and transaction list.
-> - **Cash vs. QRIS Proof Policy**:
->   - **Cash (Tunai)**: Photo proof is **100% OPTIONAL**. Cashiers can process cash transactions in 1 tap without opening the camera.
->   - **QRIS**: Photo proof remains **MANDATORY** to prevent fraud and maintain digital transfer records.
-> - **Low-Bandwidth Order Synchronization**:
->   - Orders commit immediately to IndexedDB and local sales history in 0ms with audio-haptic feedback.
->   - Background sync executes silently and non-blockingly. Cash transactions transmit lightweight (<1KB) JSON payloads that succeed even on spotty 2G/3G connections.
+Pelan teknis komprehensif, minimalis, dan berbasis prinsip *Ponytail* (YAGNI, solusi paling ringkas, memanfaatkan fitur platform bawaan, tanpa *overengineering*) untuk memperkuat stabilitas aplikasi saat digunakan tanpa koneksi internet di lapangan.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Keputusan Pengguna & Hasil Klarifikasi
 
-- **What It Solves**:
-  1. **Checkout Bottlenecks**: Previously, every transaction—including quick cash purchases—required launching the camera, snapping a photo, compressing the JPEG, and saving the blob. In hectic school or community rush hours with customer queues, this caused severe checkout delays.
-  2. **Low-Bandwidth Vulnerability**: Mandatory 50KB–100KB photo uploads per transaction caused request timeouts and queue buildup on poor mobile reception.
-  3. **Visual Clutter & Redundancy**: The 3-card KPI block in Transaction History consumed substantial screen real estate without providing actionable transaction drill-downs.
-- **Target Audience**: Student committee and community sales volunteers ("Danusan") needing ultra-fast 2-second checkout speed during busy rush hours.
-- **Key Value**: Instantaneous cash checkout, streamlined QRIS verification, distraction-free transaction history, and failure-proof offline queueing.
+Berdasarkan jawaban klarifikasi pengguna:
+1. **Indikator Offline di Header**: Tampilkan label status **"Offline"** dan jumlah antrean lokal (`Offline (N)`) saat perangkat kehilangan koneksi internet.
+2. **Manajemen Memori Foto Bukti**: **Hapus foto bukti dari memori lokal (IndexedDB & RAM cache)** setelah transaksi berhasil tersinkronisasi ke Google Drive/Sheets, sehingga penyimpanan HP tetap ringan dan bebas *memory bloat*.
+3. **Pengaturan Menu saat Offline**: **Izinkan kasir mengedit menu dan harga saat offline** dengan penyimpanan lokal instan ke IndexedDB (0ms), dan tunda sinkronisasi ke Sheet hingga internet kembali online tanpa membuat aplikasi macet/menunggu timeout.
 
 ---
 
-## 2. User Experience & Visual Design
+## 2. Analisis Masalah Alur Offline Saat Ini
 
-### Key User Flows
-
-1. **Lightning-Fast Cash Checkout (0ms latency)**:
-   - Volunteer taps items in catalog or uses numeric keyboard.
-   - Selects "Tunai" (or leaves as default).
-   - The primary CTA immediately reads `N barang · Simpan Pesanan` (active, vibrant iOS blue).
-   - Volunteer taps "Simpan Pesanan": instant green toast, cash register chime sound, order saved to IndexedDB, cart cleared for the next customer. Zero camera friction.
-   - An optional photo button remains available for cashiers who wish to attach physical receipts.
-
-2. **Secure QRIS Checkout**:
-   - Volunteer selects "QRIS".
-   - The primary CTA indicates `N barang · Wajib Bukti QRIS`.
-   - Volunteer captures or uploads the transfer screenshot.
-   - CTA activates to `Simpan Pesanan` and completes the transaction.
-
-3. **Clean Transaction History**:
-   - Tapping "Riwayat Transaksi" opens directly to the search input, filter pills, and chronological transaction records.
-   - No redundant KPI banners pushing the actual data below the viewport fold.
-
-### Visual Identity & Ergonomics
-- **Button Affordance**: Clear visual status between Cash (ready to submit) and QRIS (waiting for photo).
-- **Camera Button Indicator**: Shows `Bukti Tunai (Opsional)` when Cash is selected, and `Bukti QRIS (Wajib)` when QRIS is selected.
-- **Maximized Viewport**: Removing the KPI strip increases visible transaction rows from 2 to 5+ on mobile screens.
+1. **Header Kurang Informatif saat Offline**:
+   - Saat internet putus, header tetap menampilkan status `Tersinkron` dengan titik hijau jika antrean kosong, atau `Antrean (N)` dengan titik kuning tanpa keterangan jelas bahwa perangkat sedang offline. Kasir tidak memiliki kepastian visual apakah transaksi tersimpan di memori HP.
+2. **Memory Bloat dari Foto Bukti yang Sudah Tersinkron**:
+   - Di `indexedDBStorage.ts`, setiap transaksi yang telah tersinkronisasi ke Google Drive tetap mempertahankan string `photo_base64` (~50KB–200KB per file) di dalam database IndexedDB lokal `sales_history_store`.
+   - Pada bazar/penjualan intensif seharian dengan ratusan transaksi, data ini menumpuk hingga puluhan megabyte, memperlambat query baca/tulis IndexedDB dan berisiko mengalami *crash* di HP RAM rendah.
+3. **Modal Pengaturan Menggantung (15 Detik) saat Offline**:
+   - Di `App.tsx` (`handleSaveSettings`), saat kasir mengubah harga/nama menu dan menekan simpan saat offline, fungsi `saveProductsToSheet` memaksa `fetch` ke Google Apps Script dan tertahan selama 15 detik sebelum *timeout* dibatalkan.
+4. **Service Worker Navigation Timeout di HP Android/iOS**:
+   - Pada `public/sw.js`, permintaan navigasi halaman (`index.html`) mencoba `fetch()` jaringan terlebih dahulu. Jika radio seluler perangkat mati/sinyal hilang, peramban menunggu 3–5 detik untuk kegagalan koneksi sebelum beralih ke cache offline.
+5. **Kode Mati (Dead Code)**:
+   - `onPullSheet` di `SettingsModal.tsx` diarsipkan dan tidak lagi dipakai di UI, namun masih memiliki fungsi pembungkus di `App.tsx` (`handlePullSheet`), `useSyncEngine.ts` (`fetchConfigFromSheet`), dan `syncEngine.ts` (`fetchConfigFromSheet`).
+   - Prop `isInstalled` di `Header.tsx` dideklarasikan namun tidak pernah digunakan.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## 3. Rencana Perubahan Teknis (Minimal & Presisi)
 
-### Decision 1: Conditional Photo Requirement (QRIS Mandatory, Cash Optional)
-- **Chosen Approach**: Validate `draft.payment === 'QRIS' ? Boolean(draft.photoBase64) : true`.
-- **Why**: Eliminates 90% of checkout delays during high-frequency cash sales while strictly enforcing audit trails for digital QRIS transfers.
-- **Alternative Rejected**: Disabling photos entirely (fails accountability for digital transfers) or keeping photos mandatory for all payments (creates severe queue gridlock).
+### A. Indikator Status Offline Real-Time di Header
+- **Target File**: `src/components/Header.tsx` & `src/App.tsx`
+- **Tindakan**:
+  - Tangkap status konektivitas perangkat (`navigator.onLine`) secara reaktif menggunakan event listener native `'online'` dan `'offline'`.
+  - Teruskan prop `isOnline` ke `Header.tsx`.
+  - Logika status pill pada `Header.tsx`:
+    - Jika `!isOnline`:
+      - `queueLength > 0`: Tampilkan label `Offline (${queueLength})` dengan titik kuning/amber.
+      - `queueLength === 0`: Tampilkan label `Offline (Siap)` dengan titik abu-abu/netral.
+    - Jika `isOnline`: Tetap gunakan logika yang sudah ada (`Tersinkron`, `Menyinkronkan...`, atau `Antrean (N)`).
+  - Hapus prop `isInstalled` yang tidak digunakan dari `Header.tsx`.
 
-### Decision 2: Removal of KPI Summary Strip
-- **Chosen Approach**: Completely remove the static KPI grid from `TransactionHistoryModal`.
-- **Why**: Users already see total items in the search filter header, and the cards occupied critical vertical space on mobile screens.
-- **Alternative Rejected**: Collapsible KPI drawer (adds unnecessary interaction complexity).
+### B. Pembersihan Otomatis Foto Bukti Setelah Sinkronisasi Sukses
+- **Target File**: `src/services/indexedDBStorage.ts` & `src/utils/historyStorage.ts`
+- **Tindakan**:
+  - Pada `markHistoryOrderSynced(orderId)` di `indexedDBStorage.ts`:
+    - Setel `item.is_local_pending = false`.
+    - Hapus data gambar: `item.photo_base64 = ''`.
+    - Simpan kembali record yang sudah ringan ke `STORES.SALES_HISTORY`.
+  - Pada `markOrderSyncedLocally(orderId)` di `historyStorage.ts`:
+    - Perbarui cache memori lokal dengan menghapus `photo_base64` untuk pesanan tersebut.
+  - Hasil: Pesanan offline yang belum tersinkron tetap memiliki foto untuk pratinjau kasir. Begitu terkirim ke Google Sheets & Drive, memori disk langsung dibersihkan, sedangkan tautan Google Drive (`photo_url`) tetap dapat dibuka kapan saja.
 
-### Decision 3: Lightweight Payload Strategy for Spotty Networks
-- **Chosen Approach**: Cash orders omit base64 image data entirely, resulting in sub-kilobyte JSON payloads that transmit in milliseconds even on EDGE/2G cellular connections.
-- **Why**: Dramatically improves sync completion rates in low-bandwidth venues.
+### C. Simpan Menu Offline Instan Tanpa Delay Timeout
+- **Target File**: `src/App.tsx` (`handleSaveSettings`)
+- **Tindakan**:
+  - Cek `navigator.onLine` sebelum memicu sinkronisasi menu ke cloud:
+    - Jika offline (`!navigator.onLine`): Simpan perubahan menu langsung ke IndexedDB (`saveCatalog`) dan `localStorage` (0ms), tampilkan notifikasi toast `"✓ Menu tersimpan di perangkat (Mode Offline)"`, dan lewati pemanggilan jaringan.
+    - Jika online: Lanjutkan sinkronisasi normal ke Google Sheets.
+  - Saat perangkat kembali online (`'online'` event), jika URL API tersedia, otomatis sinkronkan antrean dan menu tanpa perlu campur tangan kasir.
 
----
+### D. Optimasi Service Worker untuk Buka Aplikasi Instan Saat Offline
+- **Target File**: `public/sw.js`
+- **Tindakan**:
+  - Pada event `fetch` untuk `event.request.mode === 'navigate'`:
+    - Jika `!navigator.onLine`, langsung sajikan `./index.html` dari `caches.match()` secara instan (0ms) tanpa menunggu kegagalan stack jaringan radio seluler.
+    - Jika online, pertahankan alur *network-first* dengan pembaharuan cache di latar belakang.
 
-## 4. Technical Architecture & Component Changes
-
-```
-┌────────────────────────────────────────────────────────┐
-│             STREAMLINED CHECKOUT DATA FLOW             │
-└────────────────────────────────────────────────────────┘
-
- [ Cash Selected ]                    [ QRIS Selected ]
-       │                                     │
-       ▼                                     ▼
- Photo Optional                       Photo Mandatory
-       │                                     │
-       ▼                                     ▼
- [ Simpan Pesanan ] (Active)           [ Lampirkan Bukti QRIS ]
-       │                                     │ (Attach Photo)
-       │                                     ▼
-       │                              [ Simpan Pesanan ] (Active)
-       │                                     │
-       └──────────────────┬──────────────────┘
-                          ▼
-             Instant Local Commit (0ms)
-               - Save to IndexedDB
-               - Add to Local History
-               - Trigger Haptic & Sound
-               - Clear Draft Cart
-                          │
-                          ▼
-             Silent Non-Blocking Sync
-               - Cash: <1KB JSON (Instant)
-               - QRIS: Full Payload
-               - Adaptive Backoff & Jitter
-```
-
-### Components to Update
-1. **`src/components/TransactionHistoryModal.tsx`**:
-   - [x] Deleted the KPI Summary Cards section (`div#root:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(6) > div:nth-of-type(1) > div:nth-of-type(2)`).
-   - [x] Cleaned up unused `kpiStats` state and calculation.
-2. **`src/hooks/useOrderSession.ts`**:
-   - [x] Updated `isSubmitDisabled` to only mandate photo when `payment === 'QRIS'`.
-   - [x] Updated `submitButtonText` and `buildOrderPayload()` to support instant zero-photo cash orders.
-3. **`src/components/PaymentDock.tsx`**:
-   - [x] Updated mobile checkout bar submit logic and button labels.
-   - [x] Displayed `Bukti (Opsional)` for Cash vs `Bukti QRIS` with active pulse for QRIS.
-4. **`src/components/TabletOrderPanel.tsx`**:
-   - [x] Updated iPad/desktop split checkout panel submit logic and camera label.
-5. **`src/services/syncEngine.ts`**:
-   - [x] Added `ORDER_SYNC_TIMEOUT_FAST_MS = 10000` for lightweight (<1KB) text-only cash transactions to prevent hang on spotty connections.
+### E. Penghapusan Kode Mati (Dead Code Elimination)
+- **Target File**:
+  - `src/components/SettingsModal.tsx`: Hapus deklarasi prop `onPullSheet` yang tidak pernah dipanggil.
+  - `src/App.tsx`: Hapus fungsi `handlePullSheet` dan prop `onPullSheet` yang diteruskan ke `SettingsModal`.
+  - `src/hooks/useSyncEngine.ts` & `src/services/syncEngine.ts`: Hapus method `fetchConfigFromSheet` yang tidak lagi digunakan.
 
 ---
 
-## 5. Verification & Status
-- **TypeScript & Linting**: `tsc --noEmit` passed with 0 errors.
-- **Build**: Vite production build succeeded.
-- **Dev Server**: Running on port 3000 (HTTP 200).
+## 4. Verifikasi & Status Implementasi
+
+- [x] **Indikator Offline Real-Time**: `Header.tsx` merespons status `isOnline`, menampilkan `Offline (Siap)` atau `Offline (N)` dengan dot visual yang jelas saat perangkat kehilangan sinyal.
+- [x] **Pembersihan Otomatis Foto Bukti**: `markHistoryOrderSynced` di `indexedDBStorage.ts` dan `markOrderSyncedLocally` di `historyStorage.ts` otomatis membersihkan `photo_base64` setelah pesanan sukses tersinkron ke cloud, mencegah memory bloat.
+- [x] **Penyimpanan Menu Offline Instan**: `handleSaveSettings` di `App.tsx` mengecek status koneksi; saat offline, langsung simpan ke IndexedDB dan localStorage tanpa delay timeout 15 detik.
+- [x] **Fast Service Worker Navigation**: `sw.js` langsung menyajikan cache `index.html` seketika saat offline (`!navigator.onLine`).
+- [x] **Pembersihan Kode Mati**: Menghapus `onPullSheet`, `handlePullSheet`, dan `fetchConfigFromSheet` dari `SettingsModal`, `App`, `useSyncEngine`, dan `syncEngine`.
+- [x] **TypeScript & Linting**: `tsc --noEmit` lolos 100% dengan 0 error.
+- [x] **Production Bundle**: `vite build` berhasil mentransformasikan 1684 modul dalam 884ms.
+- [x] **Server Development**: Port 3000 aktif dan merespons `HTTP 200 OK`.

@@ -53,8 +53,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Navigation Requests (index.html / root): Fresh Network-First with offline cache fallback
+  // 2. Navigation Requests (index.html / root): Instant Cache when offline, Network-First when online
   if (event.request.mode === 'navigate') {
+    if (!navigator.onLine) {
+      event.respondWith(
+        caches.match('./index.html').then((cached) => {
+          return cached || caches.match('/index.html') || caches.match('./');
+        })
+      );
+      return;
+    }
+
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {

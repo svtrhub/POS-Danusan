@@ -28,10 +28,6 @@ export function useSyncEngine() {
     return syncEngine.saveProductsToSheet(url, products);
   }, []);
 
-  const fetchConfigFromSheet = useCallback(async (urlOverride?: string) => {
-    return syncEngine.fetchConfigFromSheet(urlOverride);
-  }, []);
-
   const fetchHistoryFromSheet = useCallback(async (urlOverride?: string) => {
     return syncEngine.fetchHistoryFromSheet(urlOverride);
   }, []);
@@ -46,7 +42,6 @@ export function useSyncEngine() {
     enqueue,
     processQueue,
     saveProductsToSheet,
-    fetchConfigFromSheet,
     fetchHistoryFromSheet,
   };
 }

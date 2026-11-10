@@ -13,7 +13,7 @@ interface HeaderProps {
   apiUrl: string;
   hasSyncError: boolean;
   isInstallable: boolean;
-  isInstalled: boolean;
+  isOnline?: boolean;
   onSyncClick: () => void;
   onResetCart: () => void;
   onOpenSettings: () => void;
@@ -26,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   apiUrl,
   hasSyncError,
   isInstallable,
+  isOnline = true,
   onSyncClick,
   onResetCart,
   onOpenSettings,
@@ -34,7 +35,15 @@ export const Header: React.FC<HeaderProps> = ({
   let syncLabel = 'Tersinkron';
   let dotColor = 'bg-emerald-500';
 
-  if (!apiUrl) {
+  if (!isOnline) {
+    if (queueLength > 0) {
+      syncLabel = `Offline (${queueLength})`;
+      dotColor = 'bg-amber-500';
+    } else {
+      syncLabel = 'Offline (Siap)';
+      dotColor = 'bg-slate-400';
+    }
+  } else if (!apiUrl) {
     syncLabel = queueLength > 0 ? `Atur URL (${queueLength})` : 'Atur URL';
     dotColor = 'bg-rose-500';
   } else if (hasSyncError) {

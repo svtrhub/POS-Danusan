@@ -241,6 +241,7 @@ export async function markHistoryOrderSynced(orderId: string): Promise<void> {
       const item = getRequest.result as SalesHistoryItem | undefined;
       if (item) {
         item.is_local_pending = false;
+        item.photo_base64 = ''; // Auto-prune heavy base64 proof from device disk once synced to cloud
         store.put(item);
       }
       resolve();

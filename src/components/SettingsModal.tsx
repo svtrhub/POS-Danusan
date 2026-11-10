@@ -26,7 +26,6 @@ interface SettingsModalProps {
   onOpenHistory?: () => void;
   onSaveQrisImage?: (base64: string) => void;
   onResetQrisImage?: () => void;
-  onPullSheet?: (targetUrl?: string) => Promise<Product[] | null>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -131,12 +130,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setIsSaving(false);
     }
   };
-
-  /* 
-   * FITUR DIARSIPKAN: handlePull
-   * const handlePull = async () => { ... }
-   * Fitur Tarik Sheet diarsipkan sesuai permintaan pengguna tanpa menghapus skrip backend.
-   */
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">

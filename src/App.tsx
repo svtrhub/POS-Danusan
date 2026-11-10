@@ -51,6 +51,24 @@ export default function App() {
   // Menu catalog state
   const [products, setProducts] = useState<Product[]>(loadSafeMenu);
 
+  // Connectivity state for real-time offline awareness
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Deep architectural modules: OrderSession & SyncEngine
   const orderSession = useOrderSession(products);
   const sync = useSyncEngine();
@@ -130,12 +148,17 @@ export default function App() {
     showToast(sync.apiUrl ? '✓ Pesanan Berhasil Disimpan!' : '✓ Masuk Antrean (Atur URL di Menu)');
   };
 
-  // Settings Save Handler
+  // Settings Save Handler (Instant offline save to IndexedDB, online sync when connected)
   const handleSaveSettings = async (newUrl: string, updatedProducts: Product[]) => {
     sync.setApiUrl(newUrl);
     setProducts(updatedProducts);
     localStorage.setItem('POS_MENU', JSON.stringify(updatedProducts));
     saveCatalog(updatedProducts).catch(() => {});
+
+    if (!navigator.onLine) {
+      showToast('✓ Menu tersimpan di perangkat (Mode Offline)');
+      return;
+    }
 
     if (newUrl) {
       const synced = await sync.saveProductsToSheet(newUrl, updatedProducts);
@@ -147,18 +170,6 @@ export default function App() {
       }
       sync.processQueue();
     }
-  };
-
-  // Pull Sheet Handler
-  const handlePullSheet = async (targetUrl?: string): Promise<Product[] | null> => {
-    const fetched = await sync.fetchConfigFromSheet(targetUrl);
-    if (fetched && fetched.length > 0) {
-      setProducts(fetched);
-      localStorage.setItem('POS_MENU', JSON.stringify(fetched));
-      saveCatalog(fetched).catch(() => {});
-      return fetched;
-    }
-    return null;
   };
 
   const handleSyncPillClick = () => {
@@ -192,7 +203,7 @@ export default function App() {
         apiUrl={sync.apiUrl}
         hasSyncError={sync.hasSyncError}
         isInstallable={isInstallable}
-        isInstalled={isInstalled}
+        isOnline={isOnline}
         onSyncClick={handleSyncPillClick}
         onResetCart={() => {
           orderSession.clearCart();
@@ -271,7 +282,6 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        onPullSheet={handlePullSheet}
         onSaveQrisImage={handleSaveQrisImage}
         onResetQrisImage={handleResetQrisImage}
       />

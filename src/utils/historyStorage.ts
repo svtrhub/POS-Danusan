@@ -93,11 +93,11 @@ export function saveOrderToLocalHistory(order: QueuedOrder): SalesHistoryItem {
 export function markOrderSyncedLocally(orderId: string): void {
   const current = getLocalHistory();
   const updated = current.map((item) =>
-    item.order_id === orderId ? { ...item, is_local_pending: false } : item
+    item.order_id === orderId ? { ...item, is_local_pending: false, photo_base64: '' } : item
   );
   memoryHistoryCache = updated;
 
-  // Update in IndexedDB
+  // Update in IndexedDB (prunes heavy base64 proof from disk)
   markHistoryOrderSynced(orderId).catch(() => {});
 
   // Update localStorage mirror

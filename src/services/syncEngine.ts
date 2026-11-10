@@ -271,29 +271,6 @@ class SyncEngineService {
     return null;
   }
 
-  public async fetchConfigFromSheet(urlOverride?: string): Promise<Product[] | null> {
-    const url = urlOverride || this.apiUrl;
-    if (!url) return null;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    try {
-      const res = await fetch(`${url}?action=getConfig`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      const data = await res.json();
-      if (Array.isArray(data.products) && data.products.length > 0) {
-        return data.products.map((p: Product) => ({ ...p, original_name: p.name }));
-      }
-    } catch (err) {
-      clearTimeout(timeoutId);
-      console.warn('Fetch config from sheet error:', err);
-    }
-    return null;
-  }
-
   public async fetchHistoryFromSheet(urlOverride?: string): Promise<SalesHistoryItem[] | null> {
     const url = urlOverride || this.apiUrl;
     if (!url) return null;

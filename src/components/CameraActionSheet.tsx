@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { compressImageToJpeg } from '../utils/media';
 import { triggerHaptic } from '../utils/haptics';
@@ -17,7 +18,18 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const handleProcessFile = async (file: File | undefined | null) => {
     if (!file) return;
@@ -63,19 +75,19 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in select-none"
+      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs transition-opacity animate-fade-in select-none"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
-      <div
-        className="w-full max-w-xs sm:max-w-sm mx-auto pb-[calc(12px+env(safe-area-inset-bottom,0px))] sm:pb-0"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-xs sm:max-w-sm mx-auto pb-[calc(12px+env(safe-area-inset-bottom,0px))] sm:pb-0 pointer-events-none">
         {/* Main Action Group Card - Ultra Clean with exactly two action labels */}
-        <div className="bg-white rounded-2xl shadow-2xl border border-black/8 overflow-hidden divide-y divide-black/6">
+        <div
+          className="bg-white rounded-2xl shadow-2xl border border-black/8 overflow-hidden divide-y divide-black/6 pointer-events-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
           {isProcessing ? (
             <div className="h-24 flex flex-col items-center justify-center gap-2 text-slate-600 bg-white">
               <Loader2 className="w-5 h-5 text-[#007AFF] animate-spin" />
@@ -123,6 +135,7 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
