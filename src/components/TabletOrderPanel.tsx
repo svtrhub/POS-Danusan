@@ -14,6 +14,7 @@ import { CameraActionSheet } from './CameraActionSheet';
 import { NumericQuantityInput } from './NumericQuantityInput';
 import { triggerHaptic } from '../utils/haptics';
 import { BlobRegistry } from '../utils/blobRegistry';
+import { APP_LOGO_DATA } from '../assets/logo';
 
 interface TabletOrderPanelProps {
   products: Product[];
@@ -82,8 +83,8 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
       <div className="h-12 px-3.5 sm:px-4 flex items-center justify-between border-b border-black/[0.06] bg-white shrink-0 select-none">
         <div className="flex items-center gap-2">
           <img
-            src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
-            alt="Logo POS Danusan"
+            src={APP_LOGO_DATA}
+            alt="Logo AYO DANUSAN!"
             className="w-6 h-6 rounded-md object-contain border border-black/[0.04] bg-white shrink-0"
           />
           <h2 className="text-sm font-semibold text-slate-900 tracking-tight">

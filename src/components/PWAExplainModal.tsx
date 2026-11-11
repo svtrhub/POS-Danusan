@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Download } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
+import { APP_LOGO_DATA } from '../assets/logo';
 
 interface PWAExplainModalProps {
   isOpen: boolean;
@@ -27,8 +28,8 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <img
-              src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
-              alt="Logo POS Danusan"
+              src={APP_LOGO_DATA}
+              alt="Logo AYO DANUSAN!"
               className="w-10 h-10 rounded-2xl object-contain border border-black/[0.04] bg-white shrink-0 shadow-2xs"
             />
             <div>

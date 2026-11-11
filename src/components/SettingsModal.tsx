@@ -16,6 +16,7 @@ import {
 import { Product } from '../types';
 import { triggerHaptic } from '../utils/haptics';
 import { DEFAULT_QRIS_DATA } from '../assets/defaultQrisData';
+import { APP_LOGO_DATA } from '../assets/logo';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -144,8 +145,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <img
-              src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
-              alt="Logo POS Danusan"
+              src={APP_LOGO_DATA}
+              alt="Logo AYO DANUSAN!"
               className="w-7 h-7 rounded-lg object-contain border border-black/[0.04] bg-white shrink-0"
             />
             <h2 className="text-base font-bold text-slate-900 leading-tight">

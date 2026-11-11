@@ -21,6 +21,7 @@ import { SalesHistoryItem } from '../types';
 import { getLocalHistory, mergeHistory } from '../utils/historyStorage';
 import { getAllHistoryOrders } from '../services/indexedDBStorage';
 import { triggerHaptic } from '../utils/haptics';
+import { APP_LOGO_DATA } from '../assets/logo';
 
 interface TransactionHistoryModalProps {
   isOpen: boolean;
@@ -411,8 +412,8 @@ function jsonResponse(obj) {
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-white shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
-              src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
-              alt="Logo POS Danusan"
+              src={APP_LOGO_DATA}
+              alt="Logo AYO DANUSAN!"
               className="w-9 h-9 rounded-xl object-contain border border-black/[0.04] bg-white shrink-0 shadow-2xs"
             />
             <div className="min-w-0">
