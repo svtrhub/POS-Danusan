@@ -1,80 +1,140 @@
-# Rencana Optimasi RAM & Ketahanan Memori POS Danusan untuk HP Kelas Menengah/Kentang
+# Visual Craft Unslop: White Apple Minimalism & Anti-Slop Refinement
 
-Solusi komprehensif, minimalis, dan berbasis prinsip *Ponytail* (YAGNI, solusi teringkas, memanfaatkan Web API native, tanpa dependensi berat) untuk mengatasi limitasi perangkat ber-RAM rendah saat banyak aplikasi berjalan di latar belakang (Spotify/Bluetooth, WhatsApp, Instagram).
-
----
-
-## 1. Analisis Akar Masalah (Root Cause Analysis)
-
-1. **Lonjakan Alokasi Memori (Memory Spike) saat Pengolahan Foto**:
-   - Saat ini `compressImageToJpeg` menggunakan `FileReader.readAsDataURL(file)`. Pada kamera HP modern (12MP–48MP dengan ukuran file 5MB–15MB), pembacaan ini memuat string UTF-16 raksasa langsung ke heap JavaScript (~30MB RAM).
-   - Selanjutnya `new Image()` mendekode piksel mentah 4000x3000 RGBA tanpa kompresi, memicu alokasi buffer grafis sebesar `4000 * 3000 * 4 byte = ~48 MB RAM`.
-   - `canvas.toDataURL()` menghasilkan string base64 baru lainnya. Total lonjakan memori mencapai **>90MB RAM** dalam satu ketukan foto.
-   - Pada HP ber-RAM 3GB–4GB dengan aplikasi musik dan perpesanan aktif di latar belakang, lonjakan ini melampaui batas toleransi *Android Low Memory Killer (LMK)*, menyebabkan Chrome menolak alokasi canvas atau me-reload tab secara paksa.
-
-2. **Hilangnya Draft Keranjang saat Android Membunuh Tab Browser**:
-   - Saat kasir membuka kamera (`<input type="file" capture="environment">`), Android membuka aplikasi kamera bawaan OEM sebagai aktivitas terpisah yang sangat boros RAM (seringkali memakan 200MB–400MB RAM untuk ISP dan sensor kamera).
-   - Jika tab browser Chrome di latar belakang terbunuh oleh OS, draft yang hanya tersimpan di memori transien `sessionStorage` berisiko hilang ketika Chrome dibuka kembali.
+Redesign and clean up the POS Danusan user interface to achieve a genuine White Apple Minimalism aesthetic (White × Black × Grey with refined Blue accent), eliminating nested "cards inside cards", removing redundant explanatory metatext, and stripping away vibecoded neon green/yellow accents in favor of quiet, deliberate craft.
 
 ---
 
-## 2. Keputusan Kunci Berdasarkan Klarifikasi Pengguna
+## User Review & Critical Decisions
 
-1. **Resolusi Maksimal 750px (Ramah HP Kentang)**:
-   - Membatasi sisi terpanjang foto bukti menjadi **750px** dengan kompresi JPEG 0.58.
-   - Hasil foto bukti sangat ringan (~30KB–45KB), tetapi teks nominal transfer, tanggal, dan nomor referensi QRIS tetap terbaca dengan sangat tajam.
-2. **Penyimpanan Draft Otomatis ke Disk Lokal (Crash-Proof Persistence)**:
-   - Menyimpan cadangan draft transaksi aktif langsung ke `localStorage` (`POS_DRAFT_PERSISTENT`), sehingga jika Android terpaksa memuat ulang tab saat membuka kamera, isi keranjang dan item yang sudah dipilih tetap 100% utuh tanpa perlu diinput ulang oleh kasir.
-
----
-
-## 3. Rencana Perubahan Teknis (Arsitektur Hemat RAM)
-
-### A. Revamp `compressImageToJpeg` Menggunakan Hardware-Accelerated Downsampling
-- **Target File**: `src/utils/media.ts`
-- **Tindakan**:
-  1. **Gunakan `createImageBitmap` dengan Opsi Resize Native**:
-     - Jika peramban mendukung `createImageBitmap(blob, { resizeWidth, resizeHeight, resizeQuality: 'medium' })`, peramban mendekode foto langsung ke ukuran target 750px di level engine native/GPU.
-     - Buffer gambar berukuran 48MB sepenuhnya dihindari; memori yang digunakan hanya **~2.2MB RAM** (penurunan alokasi RAM sebesar **>95%**).
-  2. **Fallback Hemat Memori via `URL.createObjectURL`**:
-     - Untuk peramban tanpa opsi resize, gunakan `URL.createObjectURL(file)` menggantikan `FileReader.readAsDataURL(file)`.
-     - Menghindari pembuatan string base64 mentah 15MB di heap JavaScript. Segera panggil `URL.revokeObjectURL(url)` setelah selesai menggambar ke canvas.
-  3. **Pembersihan Seketika Canvas Backing Store**:
-     - Segera setelah menghasilkan data output, setel `canvas.width = 0; canvas.height = 0;` untuk memaksa browser melepas memori framebuffer kanvas dari VRAM/RAM seketika.
-
-### B. Perlindungan Keranjang Terhadap Reload Akibat LMK OS
-- **Target File**: `src/hooks/useOrderSession.ts`
-- **Tindakan**:
-  - Sinkronkan draft keranjang tidak hanya ke `sessionStorage`, tetapi juga ke `localStorage` (`POS_DRAFT_PERSISTENT`).
-  - Saat inisialisasi state keranjang, periksa `localStorage` jika `sessionStorage` kosong akibat proses tab di-restart oleh Android.
-  - Bersihkan kunci `POS_DRAFT_PERSISTENT` saat pesanan berhasil disimpan (`resetAfterSubmit`) atau saat kasir menekan tombol *Reset* keranjang.
-
-### C. Alur Pengambilan Foto yang Aman dari Tab Freeze
-- **Target File**: `src/components/CameraActionSheet.tsx`
-- **Tindakan**:
-  - Tambahkan blok `try / catch / finally` yang ketat pada pembacaan file dengan indikator visual *loading state* yang jelas.
-  - Jika terjadi kendala memori pada file kamera resolusi ultra-tinggi, otomatis jalankan pemangkasan dimensi darurat (fallback downscale) tanpa membuat aplikasi macet atau layar putih (*white screen*).
+> [!IMPORTANT]
+> The following design decisions have been confirmed through Phase 1 user feedback and form the core specification for this unslop transformation:
+>
+> - **Sync Status Presentation**: Replaced the nested pill box (`bg-slate-100 rounded-full border`) with clean, quiet text and a subtle state dot without any pill background container, eliminating "card inside card" visual noise in the header.
+> - **Color Discipline & State Palette**: Migrated completely from vibecoded amber/green/neon accents to an authentic White Apple palette: pure white (`#FFFFFF`), light Apple system grey (`#F5F5F7`), slate-900 black typography (`#1D1D1F`), muted secondary grey (`#86868B`), and Apple Blue (`#007AFF`) strictly reserved as the high-intent accent for active sync states and primary actions.
+> - **Settings & Modal Architecture**: Removed nested card-in-card containers and heavy gradient backgrounds in `SettingsModal.tsx`. Transitioned to clean, flat rows separated by subtle hairlines (`border-b border-black/[0.06]`).
+> - **Copy & Metatext Pruning**: Stripped out redundant explanatory subtext (e.g., the verbose paragraph under "Mode Hemat Baterai", "Aktif" badges, and unnecessary tooltips), letting the clean label "Mode Hemat Baterai" and standard iOS switch toggle speak for themselves.
 
 ---
 
-## 4. Alur Memori Baru vs Alur Memori Lama
+## 1. Overview & Core Concept
+
+- **What It Does**: Transforms the visual execution of the POS Danusan cashier system from an AI-generated look (nested pill capsules, noisy amber/green badges, gradient cards, redundant explanatory microcopy) into a restrained, human-crafted Apple utility interface.
+- **Target Audience**: Student committee cashiers and booth operators needing immediate, fatigue-free visual clarity on smartphones and tablets under daylight or ambient booth lighting.
+- **Key Value**: Extreme visual clarity and focus. The chrome stays quiet and clean so that numbers, menu items, and the checkout total remain the singular focal heroes of the screen.
+
+---
+
+## 2. User Experience & Visual Design
+
+### Visual Identity & Theme Tokens
+- **Canvas (60%)**: Apple System Grey `#F5F5F7` for the background canvas, with pure white `#FFFFFF` for primary work surfaces (Header, Product Grid cards, Bottom Cart Sheet).
+- **Structural Chrome & Dividers (30%)**: Ultra-fine hairline borders (`border-black/[0.06]` in light mode, `border-slate-200/80` for controls) providing structural separation without visual heaviness.
+- **Accent Budget (10%)**: Apple System Blue (`#007AFF` / `rgb(0, 122, 255)`) strictly applied to:
+  - Active sync indicator (rotating ring icon and text when syncing).
+  - Primary checkout / submit action buttons.
+  - Active toggle states and selected filter segments.
+- **Typography**:
+  - Headings: Display font with natural weights (SemiBold 600, Regular 400), zero uppercase tracking.
+  - Body & Labels: 14px–16px readable measure, sentence case.
+  - Numerals: Strictly tabular (`font-mono tabular-nums`) for currency amounts, quantities, and timer numbers to eliminate layout twitching.
+
+### 1. Header & Sync Status Refactoring (Selected Element Focus)
+- **Eliminating Nested Card Chrome**:
+  - The target element (`header > div > div > button`) currently renders as a rounded pill (`bg-slate-100 rounded-full border border-slate-200/60`).
+  - **Unslopped Design**: A clean, borderless inline touch control (`px-2.5 py-1.5 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] transition-colors`).
+  - **Dot & Text**: 6px subtle state dot (muted slate `#86868B` for synced, Apple Blue `#007AFF` for syncing/uploading, soft rose for error/offline) + clean, quiet typography (`text-xs font-medium text-slate-700`).
+  - **Battery Saver Tag**: Remove the amber pill badge (`bg-amber-50 text-amber-700 border border-amber-200`). Render a quiet monochrome battery icon next to the sync text when active.
+  - **Install PWA Button**: Replace the blue capsule button with a refined text button (`text-xs font-semibold text-[#007AFF] hover:bg-blue-50/60 px-2.5 py-1 rounded-lg`).
+
+### 2. Settings Modal Unslop (Removing Cards Inside Cards & Metatext)
+- **Flattened Inset List Pattern**:
+  - Replace nested card containers (`bg-slate-50 border border-slate-200/90 rounded-2xl` and `bg-gradient-to-r from-blue-50`) with an authentic iOS grouped table style.
+  - **Mode Hemat Baterai**: A single clean row containing the label "Mode Hemat Baterai" and the iOS switch toggle. Remove the paragraph *"Matikan animasi UI & sinkronisasi background berkala untuk memperpanjang daya baterai HP"* and the *"Aktif"* pill badge.
+  - **Riwayat Transaksi**: A clean list row with a receipt icon, clean label, and subtle chevron disclosure, with zero nested gradient backgrounds.
+  - **Apps Script URL**: Minimalist input field with a quiet label and subtle hairline border.
+  - **QRIS Setting**: Clean horizontal row with thumbnail preview and single quiet action button.
+
+### 3. Catalog & Cart Aesthetics
+- **Product Cards**: Clean white surface (`bg-white`), single 1px hairline border (`border-black/[0.06]`), soft Apple shadow (`shadow-[0_1px_2px_rgba(0,0,0,0.03)]`), eliminating chunky borders and candy-colored quantity badges.
+- **Cart Bottom Sheet**: Pure white floating card bar with single high-contrast primary CTA in `#007AFF`, clear tabular price summary, and no redundant colored banners.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Borderless Sync Status vs. Pill Container**
+  - *Chosen Approach*: Clean text with a subtle dot on transparent/hover background.
+  - *Why*: The header is already a card/surface; placing a pill-shaped bordered card inside it creates the classic "cards inside cards" AI tell. The borderless approach lets the header breathe while maintaining full touch target compliance (min 44px hit area).
+  - *Alternatives Considered*: Retaining the pill but changing colors—rejected because the pill enclosure itself was identified as visual clutter.
+
+- **Decision 2: Removing Explanatory Subtext on Controls**
+  - *Chosen Approach*: Strip out secondary metatext for established concepts like "Mode Hemat Baterai".
+  - *Why*: Cashiers are repetitive power users. Long explanatory paragraphs clutter the viewport on mobile devices without adding functional value. The standard switch toggle clearly communicates binary on/off state.
+  - *Alternatives Considered*: Accordion expandable text—rejected as unnecessary complexity.
+
+- **Decision 3: Single Neutral Ramp with Apple Blue Accent**
+  - *Chosen Approach*: Monochromatic base (White, System Grey `#F5F5F7`, Black `#1D1D1F`) with Apple Blue (`#007AFF`) as the sole chromatic accent for interactive highlights and syncing.
+  - *Why*: Eliminates the chaotic "rainbow UI" (competing greens, yellows, ambers, and purples) and delivers a cohesive, professional aesthetic.
+
+---
+
+## 4. Technical Architecture & Component Hierarchy
 
 ```
-[ ALUR LAMA (Beban RAM >90MB) ]
-File Foto (12MP) ──> FileReader (DataURL 15MB di Heap) ──> Image Decode (48MB Buffer Mentah) ──> Canvas Draw ──> [RISIKO CRASH LMK]
-
-[ ALUR BARU (Beban RAM <3.5MB) ]
-File Foto (12MP) ──> createImageBitmap ({ resizeWidth: 750 }) ──> Bitmap 750px (~2.2MB) ──> Canvas (0.3MB) ──> Reset Canvas (0MB)
+┌────────────────────────────────────────────────────────────────────────┐
+│                                App.tsx                                 │
+│                   Canvas: bg-[#F5F5F7] (Apple Neutral)                 │
+├────────────────────────────────────────────────────────────────────────┤
+│                                Header                                  │
+│  ┌─────────────────────────┐  ┌──────────────────┐  ┌────────────────┐ │
+│  │ POS DANUSAN (Wordmark)  │  │   Sync Status    │  │  PWA / Menu    │ │
+│  │ 1-line display face     │  │  (Clean text +   │  │  Quiet action  │ │
+│  │ text-slate-900          │  │   subtle dot,    │  │  icons/buttons │ │
+│  │                         │  │   no pill card)  │  │                │ │
+│  └─────────────────────────┘  └──────────────────┘  └────────────────┘ │
+├────────────────────────────────────────────────────────────────────────┤
+│                         Product Catalog (Main)                         │
+│  ┌────────────────────────┐  ┌────────────────────────┐                │
+│  │      Product Card      │  │      Product Card      │                │
+│  │  bg-white, hairline    │  │  bg-white, hairline    │                │
+│  │  border-black/[0.06]   │  │  border-black/[0.06]   │                │
+│  │  tabular price text    │  │  tabular price text    │                │
+│  └────────────────────────┘  └────────────────────────┘                │
+├────────────────────────────────────────────────────────────────────────┤
+│                     CartBottomBar / Checkout Sheet                     │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │ Summary: Qty & Total (tabular-nums)  │  Primary CTA: [#007AFF]   │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Component Modifications
+1. **`src/components/Header.tsx`**:
+   - Refactor sync button: remove `bg-slate-100 hover:bg-slate-200/80 border border-slate-200/60 rounded-full`.
+   - Apply clean unboxed style: `inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-black/[0.04] transition-colors`.
+   - Replace saturated amber/green dot colors with Apple palette: muted slate dot for synced, `#007AFF` dot/spinner for active sync, clean state labels.
+   - Remove amber pill badge for Battery Saver; use quiet monochrome icon or inline text.
+   - Refactor Install PWA button to clean text action.
+
+2. **`src/components/SettingsModal.tsx`**:
+   - Replace nested cards and gradient backgrounds with clean grouped flat rows separated by hairlines.
+   - Mode Hemat Baterai: clean row with label and switch toggle; remove redundant paragraph copy and "Aktif" chip.
+   - Riwayat Transaksi: clean row with icon, title, and chevron disclosure.
+   - Clean up input styles and QRIS section to match Apple monochrome aesthetic.
+
+3. **`src/components/ProductCard.tsx` & `src/components/CartBottomBar.tsx`**:
+   - Align border and shadow styles to subtle Apple hairline standards (`border-black/[0.06]`, `shadow-2xs`).
+   - Standardize all currency and item counts to tabular figures (`font-mono tabular-nums`).
 
 ---
 
-## 5. Hasil Verifikasi & Status Implementasi
+## 5. Verification Plan
 
-- [x] **Ultra-Low Memory Media Compressor**: `compressImageToJpeg` di `src/utils/media.ts` telah dirombak menggunakan `createImageBitmap({ resizeWidth: 750 })` + `URL.createObjectURL(file)`. Beban memori puncak dipangkas lebih dari 95% (dari >90MB menjadi <3.5MB).
-- [x] **Pembersihan Seketika Canvas Buffer**: Menyetel `canvas.width = 0; canvas.height = 0;` dan mencabut `URL.revokeObjectURL(blobUrl)` dalam blok `finally` seketika setelah kompresi selesai.
-- [x] **Perlindungan Draft Keranjang (LMK-Proof)**: `useOrderSession.ts` kini menduplikasi penyimpanan draft ke `localStorage` (`POS_DRAFT_PERSISTENT`). Jika Android me-reload tab Chrome saat pengguna membuka aplikasi kamera, seluruh item keranjang langsung dipulihkan secara otomatis.
-- [x] **Resolusi 750px Tajam & Ringan**: Ukuran output berkurang menjadi ~30KB–45KB dengan teks struk/nominal QRIS tetap tajam.
-- [x] **TypeScript & Linting**: `tsc --noEmit` lolos 100% tanpa error.
-- [x] **Production Build**: `vite build` berhasil mengompilasi 1684 modul dalam 845ms.
-- [x] **Status Dev Server**: Port 3000 aktif dan merespons `HTTP 200 OK`.
+1. **Compilation & Lint Verification**:
+   - Run `compile_applet` and `lint_applet` together to verify zero syntax errors and valid TypeScript types.
+   - Run `npm run build` to verify production build bundle integrity.
+2. **Visual & Ergonomic Inspection**:
+   - Verify that the sync status in the header has no pill background, nested border, or heavy shadow.
+   - Verify that all touch hitboxes remain $\ge 44\text{px}$ for accessibility.
+   - Verify that Settings Modal contains zero nested cards and no verbose metatext under Mode Hemat Baterai.
+   - Verify the color palette is strictly White × Black × Grey with Apple Blue (`#007AFF`) accents.

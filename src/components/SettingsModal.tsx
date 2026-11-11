@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Receipt,
   ChevronRight,
+  ZapOff,
 } from 'lucide-react';
 import { Product } from '../types';
 import { triggerHaptic } from '../utils/haptics';
@@ -21,11 +22,13 @@ interface SettingsModalProps {
   apiUrl: string;
   products: Product[];
   customQrisImage?: string;
+  isBatterySaver?: boolean;
   onClose: () => void;
   onSave: (newUrl: string, updatedProducts: Product[]) => Promise<void>;
   onOpenHistory?: () => void;
   onSaveQrisImage?: (base64: string) => void;
   onResetQrisImage?: () => void;
+  onToggleBatterySaver?: (enabled: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -33,11 +36,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   apiUrl,
   products,
   customQrisImage,
+  isBatterySaver = false,
   onClose,
   onSave,
   onOpenHistory,
   onSaveQrisImage,
   onResetQrisImage,
+  onToggleBatterySaver,
 }) => {
   const [urlInput, setUrlInput] = useState(apiUrl);
   const [editorProducts, setEditorProducts] = useState<Product[]>([]);
@@ -137,7 +142,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col border border-slate-200/80 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100">
-          <div>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
+              alt="Logo POS Danusan"
+              className="w-7 h-7 rounded-lg object-contain border border-black/[0.04] bg-white shrink-0"
+            />
             <h2 className="text-base font-bold text-slate-900 leading-tight">
               Pengaturan &amp; Menu
             </h2>
@@ -182,56 +192,90 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 triggerHaptic('light');
                 onOpenHistory();
               }}
-              className="pressable w-full p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/80 hover:border-blue-300 text-left flex items-center justify-between gap-3 shadow-2xs transition group"
+              className="pressable w-full py-3 px-1 border-b border-black/[0.06] text-left flex items-center justify-between gap-3 transition hover:bg-black/[0.02]"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-[#007AFF] text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                  <Receipt className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                  <Receipt className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition truncate">
+                <span className="text-sm font-medium text-slate-900 truncate">
                   Riwayat Transaksi
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-xs font-bold text-[#007AFF] shrink-0">
-                <span>Buka</span>
+              <div className="flex items-center gap-1 text-xs font-medium text-slate-400 shrink-0">
                 <ChevronRight className="w-4 h-4" />
               </div>
             </button>
           )}
 
+          {/* Section: Mode Hemat Baterai (NO redundant metatext, NO nested card) */}
+          <div className="py-3 px-1 border-b border-black/[0.06] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                <ZapOff className="w-4 h-4" />
+              </div>
+              <span className="text-sm font-medium text-slate-900">
+                Mode Hemat Baterai
+              </span>
+            </div>
+
+            {/* Apple iOS Style Switch Toggle */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(isBatterySaver)}
+              onClick={() => {
+                triggerHaptic('medium');
+                if (onToggleBatterySaver) {
+                  onToggleBatterySaver(!isBatterySaver);
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:ring-offset-2 touch-manipulation ${
+                isBatterySaver ? 'bg-[#007AFF]' : 'bg-slate-200'
+              }`}
+              title="Mode Hemat Baterai"
+              aria-label="Toggle Mode Hemat Baterai"
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                  isBatterySaver ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
           {/* Section 1: URL Apps Script */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-800 tracking-wide uppercase">
-              URL AKTIVASI (APPS SCRIPT)
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-medium text-slate-500">
+              URL Apps Script
             </label>
             <input
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="https://script.google.com/macros/s/.../exec"
-              className="w-full h-11 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
             />
           </div>
 
           {/* Section 2: QRIS Merchant */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
-              <QrCode className="w-3.5 h-3.5 text-[#007AFF]" />
-              <span>GAMBAR QRIS</span>
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-medium text-slate-500">
+              Gambar QRIS
             </label>
 
-            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl">
+            <div className="p-2.5 border border-black/[0.06] rounded-xl bg-slate-50/50">
               <div className="flex items-center gap-3">
-                <div className="w-14 h-18 bg-white border border-slate-200 rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1 shadow-2xs">
+                <div className="w-12 h-16 bg-white border border-black/[0.06] rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-1">
                   <img
                     src={customQrisImage || DEFAULT_QRIS_DATA}
                     alt="QRIS"
-                    className="w-full h-full object-contain rounded-lg"
+                    className="w-full h-full object-contain rounded"
                   />
                 </div>
 
                 <div className="flex-1 space-y-1.5">
-                  <label className="cursor-pointer select-none pressable w-full h-9 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-2xs">
+                  <label className="cursor-pointer select-none pressable w-full h-8 px-3 rounded-lg bg-white hover:bg-slate-50 border border-black/[0.08] text-xs font-medium text-slate-700 flex items-center justify-center gap-1.5 transition active:scale-98">
                     <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
                     <span>Ganti Gambar QRIS</span>
                     <input
@@ -250,7 +294,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onResetQrisImage();
                         setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
                       }}
-                      className="pressable w-full h-7 px-2 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
+                      className="pressable w-full h-7 px-2 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>Kembalikan ke Bawaan</span>
@@ -264,10 +308,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Section 2: Menu Editor */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 tracking-wide uppercase">
+              <label className="text-xs font-medium text-slate-500">
                 Daftar Menu &amp; Harga
               </label>
-              <span className="text-xs text-slate-400 num">
+              <span className="text-xs text-slate-400 font-mono tabular-nums">
                 {editorProducts.length} item
               </span>
             </div>
@@ -283,10 +327,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={item.name}
                     onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
                     placeholder="Nama Barang"
-                    className="min-w-0 w-full h-10 px-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                    className="min-w-0 w-full h-9 px-2.5 rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
                   />
                   <div className="relative min-w-0 w-[96px] shrink-0">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
                       Rp
                     </span>
                     <input
@@ -294,13 +338,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       value={item.price}
                       onChange={(e) => handleFieldChange(idx, 'price', e.target.value)}
                       placeholder="Harga"
-                      className="h-10 pl-6 pr-2 w-full rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-right text-slate-800 num focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                      className="h-9 pl-7 pr-2 w-full rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-medium text-right text-slate-800 font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => handleRemoveRow(idx)}
-                    className="pressable w-9 h-10 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90 touch-manipulation"
+                    className="pressable w-8 h-9 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90 touch-manipulation"
                     title="Hapus Menu"
                     aria-label="Hapus Menu"
                   >
@@ -313,7 +357,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={handleAddRow}
-              className="pressable w-full h-10 rounded-xl border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 text-blue-600 text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.99] touch-manipulation"
+              className="pressable w-full h-9 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-[#007AFF] text-xs font-medium flex items-center justify-center gap-1.5 transition active:scale-98 touch-manipulation"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Baris Menu</span>
@@ -322,12 +366,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/8 flex items-center justify-end shrink-0">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/[0.06] flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 touch-manipulation"
+            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs transition disabled:opacity-50 touch-manipulation"
           >
             <Save className="w-3.5 h-3.5" />
             <span>{isSaving ? 'Menyimpan...' : 'Simpan & Sinkron'}</span>

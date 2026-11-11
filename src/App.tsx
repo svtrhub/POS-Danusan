@@ -18,8 +18,11 @@ import { useSyncEngine } from './hooks/useSyncEngine';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { DEFAULT_QRIS_DATA } from './assets/defaultQrisData';
 import { playSuccessSound } from './utils/sound';
+import { triggerHaptic } from './utils/haptics';
 import { saveOrderToLocalHistory } from './utils/historyStorage';
 import { getCatalog, saveCatalog } from './services/indexedDBStorage';
+import { BlobRegistry } from './utils/blobRegistry';
+import { formatBytes } from './utils/media';
 
 const DEFAULT_MENU: Product[] = [
   { id: 'p1', name: 'Bomboloni', original_name: 'Bomboloni', price: 5000 },
@@ -97,6 +100,15 @@ export default function App() {
     showToast('Kembali ke QRIS bawaan');
   };
 
+  const handleToggleBatterySaver = (enabled: boolean) => {
+    sync.setBatterySaver(enabled);
+    showToast(
+      enabled
+        ? 'Mode Hemat Baterai aktif (animasi & auto-sync dijeda)'
+        : 'Mode Hemat Baterai nonaktif'
+    );
+  };
+
   // Toast feedback
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -141,10 +153,11 @@ export default function App() {
     const orderPayload = orderSession.buildOrderPayload();
     if (!orderPayload) return;
 
-    playSuccessSound();
+    triggerHaptic('checkout');
     saveOrderToLocalHistory(orderPayload);
     sync.enqueue(orderPayload);
     orderSession.resetAfterSubmit();
+    BlobRegistry.clearAll();
     showToast(sync.apiUrl ? '✓ Pesanan Berhasil Disimpan!' : '✓ Masuk Antrean (Atur URL di Menu)');
   };
 
@@ -180,18 +193,22 @@ export default function App() {
     }
   };
 
-  const handlePhotoCaptured = (base64: string) => {
+  const handlePhotoCaptured = (photo: string, sizeBytes?: number) => {
+    if (photo && photo.startsWith('blob:')) {
+      BlobRegistry.register(photo);
+    }
     const isReplacing = Boolean(orderSession.draft.photoBase64);
-    orderSession.setPhotoBase64(base64);
-    showToast(isReplacing ? 'Foto bukti berhasil diperbarui' : 'Foto bukti berhasil disimpan');
+    orderSession.setPhotoBase64(photo);
+    const sizeNote = sizeBytes ? ` (${formatBytes(sizeBytes)})` : '';
+    showToast(isReplacing ? `Foto bukti diperbarui${sizeNote}` : `Foto bukti disimpan${sizeNote}`);
   };
 
   return (
-    <div className="h-screen h-[100dvh] w-full bg-[#F2F2F7] flex flex-col font-sans select-none overflow-hidden overscroll-none">
+    <div className="h-screen h-[100dvh] w-full bg-[#F5F5F7] flex flex-col font-sans select-none overflow-hidden overscroll-none">
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-4 py-2 rounded-full text-xs font-bold shadow-xl border border-white/10 flex items-center gap-1.5 animate-fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-4 py-2 rounded-full text-xs font-medium shadow-lg border border-white/10 flex items-center gap-2 animate-fade-in">
+          <CheckCircle2 className="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
           <span>{toastMsg}</span>
         </div>
       )}
@@ -199,11 +216,14 @@ export default function App() {
       {/* Header (Exact 64px height) */}
       <Header
         queueLength={sync.queueLength}
+        pendingTextCount={sync.pendingTextCount}
+        pendingPhotoCount={sync.pendingPhotoCount}
         isSyncing={sync.isSyncing}
         apiUrl={sync.apiUrl}
         hasSyncError={sync.hasSyncError}
         isInstallable={isInstallable}
         isOnline={isOnline}
+        isBatterySaver={sync.isBatterySaver}
         onSyncClick={handleSyncPillClick}
         onResetCart={() => {
           orderSession.clearCart();
@@ -279,18 +299,23 @@ export default function App() {
         apiUrl={sync.apiUrl}
         products={products}
         customQrisImage={customQrisImage}
+        isBatterySaver={sync.isBatterySaver}
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onSaveQrisImage={handleSaveQrisImage}
         onResetQrisImage={handleResetQrisImage}
+        onToggleBatterySaver={handleToggleBatterySaver}
       />
 
       {/* Transaction History Modal */}
       <TransactionHistoryModal
         isOpen={isHistoryOpen}
         apiUrl={sync.apiUrl}
-        onClose={() => setIsHistoryOpen(false)}
+        onClose={() => {
+          BlobRegistry.clearAll();
+          setIsHistoryOpen(false);
+        }}
         onFetchHistory={sync.fetchHistoryFromSheet}
         onViewPhoto={(photo) => {
           orderSession.setPhotoBase64(photo);
@@ -302,12 +327,17 @@ export default function App() {
       <PhotoModal
         isOpen={isPhotoOpen}
         photoBase64={orderSession.draft.photoBase64}
-        onClose={() => setIsPhotoOpen(false)}
+        onClose={() => {
+          BlobRegistry.clearAll();
+          setIsPhotoOpen(false);
+        }}
         onRetake={() => {
+          BlobRegistry.clearAll();
           setIsPhotoOpen(false);
           setIsRetakeActionOpen(true);
         }}
         onDelete={() => {
+          BlobRegistry.clearAll();
           orderSession.setPhotoBase64('');
           setIsPhotoOpen(false);
           showToast('Foto bukti dihapus');
@@ -317,7 +347,10 @@ export default function App() {
       {/* Retake Camera & Gallery Action Sheet */}
       <CameraActionSheet
         isOpen={isRetakeActionOpen}
-        onClose={() => setIsRetakeActionOpen(false)}
+        onClose={() => {
+          BlobRegistry.clearAll();
+          setIsRetakeActionOpen(false);
+        }}
         onPhotoCaptured={handlePhotoCaptured}
         title="Ganti Bukti Pembayaran"
       />

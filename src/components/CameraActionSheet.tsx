@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { compressImageToJpeg } from '../utils/media';
+import { compressWithAutoThreshold, formatBytes, PHOTO_MAX_BYTES_THRESHOLD } from '../utils/media';
 import { triggerHaptic } from '../utils/haptics';
+import { BlobRegistry } from '../utils/blobRegistry';
 
 interface CameraActionSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  onPhotoCaptured: (base64: string) => void;
+  onPhotoCaptured: (base64: string, sizeBytes?: number) => void;
   title?: string;
 }
 
@@ -17,6 +18,7 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
   onPhotoCaptured,
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('Memproses foto...');
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const touchStartY = useRef(0);
@@ -32,7 +34,10 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      BlobRegistry.clearAll();
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen || typeof document === 'undefined') return null;
@@ -54,6 +59,7 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
     setIsDragging(false);
     if (dragY > 70) {
       triggerHaptic('light');
+      BlobRegistry.clearAll();
       onClose();
     }
     setDragY(0);
@@ -64,17 +70,38 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
 
     try {
       setIsProcessing(true);
-      const base64 = await compressImageToJpeg(file);
 
-      if (base64) {
+      // Automatic file size inspection (>200KB detection)
+      const isOver200Kb = file.size > PHOTO_MAX_BYTES_THRESHOLD;
+      if (isOver200Kb) {
+        setProcessingStatus(`Mengompresi (${formatBytes(file.size)} → <200KB)...`);
+      } else {
+        setProcessingStatus('Memproses foto...');
+      }
+
+      // Allow browser UI thread to paint the spinner smoothly before heavy compression
+      await new Promise((resolve) => setTimeout(resolve, 35));
+
+      // 1. Direct 750px downscaling via createImageBitmap applied first BEFORE any blob is registered
+      const result = await compressWithAutoThreshold(file);
+
+      // 2. Register ephemeral blob URL strictly for the downscaled <200KB payload (zero uncompressed bloat)
+      if (result.base64) {
+        const compressedBlobUrl = BlobRegistry.create(result.base64);
+
+        console.info(
+          `[CameraActionSheet] ✅ Photo downscaled to ${result.width}x${result.height} in ${result.processingTimeMs}ms | Original: ${formatBytes(file.size)} → Memory: ${formatBytes(result.sizeBytes)} (Blob: ${compressedBlobUrl.slice(0, 30)}...)`
+        );
+
         triggerHaptic('success');
-        onPhotoCaptured(base64);
+        onPhotoCaptured(result.base64, result.sizeBytes);
         onClose();
       }
     } catch (err) {
       console.warn('Failed to process image:', err);
     } finally {
       setIsProcessing(false);
+      setProcessingStatus('Memproses foto...');
     }
   };
 
@@ -118,9 +145,14 @@ export const CameraActionSheet: React.FC<CameraActionSheetProps> = ({
 
           <div className="divide-y divide-black/6">
             {isProcessing ? (
-              <div className="h-24 flex flex-col items-center justify-center gap-2 text-slate-600 bg-white">
+              <div className="h-28 flex flex-col items-center justify-center gap-1.5 text-slate-600 bg-white px-4 text-center">
                 <Loader2 className="w-5 h-5 text-[#007AFF] animate-spin" />
-                <span className="text-xs font-semibold text-slate-700">Memproses foto...</span>
+                <span className="text-xs font-semibold text-slate-800">
+                  {processingStatus}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Kompresi otomatis hemat RAM &amp; kuota sinkronisasi
+                </span>
               </div>
             ) : (
               <>

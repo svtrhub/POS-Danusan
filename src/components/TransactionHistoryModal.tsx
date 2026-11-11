@@ -410,17 +410,19 @@ function jsonResponse(obj) {
         {/* Header Bar */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-white shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
-              <Receipt className="w-5 h-5 text-[#007AFF]" />
-            </div>
+            <img
+              src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
+              alt="Logo POS Danusan"
+              className="w-9 h-9 rounded-xl object-contain border border-black/[0.04] bg-white shrink-0 shadow-2xs"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-900 leading-tight">
                   Riwayat Transaksi
                 </h2>
                 {apiUrl && (
-                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                     <span>Terhubung Sheet</span>
                   </span>
                 )}
@@ -661,37 +663,24 @@ function jsonResponse(obj) {
                     className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60 transition"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 font-medium">
+                        <span className="font-mono text-slate-900 font-semibold">
                           #{item.order_id}
                         </span>
-
-                        {/* Payment Method Badge */}
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            item.payment_method === 'QRIS'
-                              ? 'bg-blue-50 text-[#007AFF] border border-blue-200/60'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                          }`}
-                        >
-                          {item.payment_method === 'QRIS' ? (
-                            <QrCode className="w-2.5 h-2.5" />
-                          ) : (
-                            <Banknote className="w-2.5 h-2.5" />
-                          )}
-                          <span>{item.payment_method}</span>
+                        <span aria-hidden="true" className="text-slate-300">·</span>
+                        <span className={item.payment_method === 'QRIS' ? 'text-[#007AFF] font-medium' : 'text-slate-700 font-medium'}>
+                          {item.payment_method}
                         </span>
-
-                        {/* Sync Status Badge */}
+                        <span aria-hidden="true" className="text-slate-300">·</span>
                         {item.is_local_pending ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
-                            <Clock className="w-2.5 h-2.5 animate-pulse" />
-                            <span>Antrean Offline</span>
+                          <span className="text-slate-600 font-medium flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>Antrean</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" />
-                            <span>Google Sheet</span>
+                          <span className="text-slate-500 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-[#007AFF]" />
+                            <span>Sheet</span>
                           </span>
                         )}
                       </div>

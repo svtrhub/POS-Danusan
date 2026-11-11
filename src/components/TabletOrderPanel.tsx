@@ -13,6 +13,7 @@ import { Product } from '../types';
 import { CameraActionSheet } from './CameraActionSheet';
 import { NumericQuantityInput } from './NumericQuantityInput';
 import { triggerHaptic } from '../utils/haptics';
+import { BlobRegistry } from '../utils/blobRegistry';
 
 interface TabletOrderPanelProps {
   products: Product[];
@@ -26,7 +27,7 @@ interface TabletOrderPanelProps {
   onQuantityChange: (productId: string, quantity: number) => void;
   onClearCart: () => void;
   onPaymentChange: (method: 'QRIS' | 'Cash') => void;
-  onPhotoCaptured: (base64: string) => void;
+  onPhotoCaptured: (base64: string, sizeBytes?: number) => void;
   onViewPhoto: () => void;
   onSubmit: () => void;
 }
@@ -71,19 +72,24 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
 
   const handleSubmit = () => {
     if (isSubmitDisabled) return;
-    triggerHaptic('success');
+    triggerHaptic('checkout');
     onSubmit();
   };
 
   return (
-    <aside className="hidden md:flex flex-col w-[360px] lg:w-[380px] shrink-0 h-full max-h-full overflow-hidden bg-white border-l border-black/8 select-none shadow-xs">
+    <aside className="hidden md:flex flex-col w-[360px] lg:w-[380px] shrink-0 h-full max-h-full overflow-hidden bg-white border-l border-black/[0.06] select-none shadow-xs">
       {/* Top Header of Sidebar */}
-      <div className="h-12 px-3.5 sm:px-4 flex items-center justify-between border-b border-black/6 bg-white shrink-0 select-none">
+      <div className="h-12 px-3.5 sm:px-4 flex items-center justify-between border-b border-black/[0.06] bg-white shrink-0 select-none">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold text-slate-800 tracking-tight">
+          <img
+            src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
+            alt="Logo POS Danusan"
+            className="w-6 h-6 rounded-md object-contain border border-black/[0.04] bg-white shrink-0"
+          />
+          <h2 className="text-sm font-semibold text-slate-900 tracking-tight">
             Pesanan Kasir
           </h2>
-          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#007AFF] border border-blue-200/60 num">
+          <span className="text-xs text-slate-400 font-mono tabular-nums">
             {totalQty} item
           </span>
         </div>
@@ -152,7 +158,7 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      triggerHaptic('light');
+                      triggerHaptic('cart_add');
                       onIncrement(product.id);
                     }}
                     className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-90"
@@ -210,9 +216,9 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                 triggerHaptic('selection');
                 onPaymentChange('Cash');
               }}
-              className={`pressable flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-bold transition-all active:scale-[0.98] ${
+              className={`pressable flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-semibold transition-all active:scale-[0.98] ${
                 paymentMethod === 'Cash'
-                  ? 'bg-white text-emerald-600 shadow-xs'
+                  ? 'bg-white text-[#007AFF] shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -231,13 +237,13 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                     triggerHaptic('light');
                     onViewPhoto();
                   }}
-                  className="pressable h-10 px-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-1 text-xs font-bold shadow-2xs hover:bg-emerald-100 transition active:scale-95"
+                  className="pressable h-10 px-2 rounded-xl bg-slate-100 border border-black/[0.08] text-slate-800 flex items-center gap-1 text-xs font-semibold shadow-2xs hover:bg-slate-200/70 transition active:scale-95"
                   title="Lihat Bukti Pembayaran"
                 >
                   <img
                     src={photoBase64}
                     alt="Bukti pembayaran"
-                    className="w-6 h-6 rounded-md object-cover border border-emerald-300"
+                    className="w-6 h-6 rounded-md object-cover border border-black/[0.08]"
                   />
                   <Eye className="w-3.5 h-3.5" />
                 </button>
@@ -248,7 +254,7 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                     triggerHaptic('light');
                     setIsCameraActionOpen(true);
                   }}
-                  className="pressable h-10 px-2.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 shadow-2xs"
+                  className="pressable h-10 px-2.5 rounded-xl bg-white hover:bg-slate-100 border border-black/[0.08] text-slate-700 text-xs font-medium flex items-center gap-1 transition active:scale-95 shadow-2xs"
                   title="Ganti Bukti (Kamera / Galeri)"
                 >
                   <Camera className="w-3.5 h-3.5" />
@@ -262,10 +268,10 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
                   triggerHaptic('light');
                   setIsCameraActionOpen(true);
                 }}
-                className={`pressable h-10 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition active:scale-[0.98] shadow-2xs ${
+                className={`pressable h-10 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition active:scale-[0.98] shadow-2xs ${
                   isPhotoRequired && totalQty > 0
-                    ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 animate-pulse'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600'
+                    : 'bg-white text-slate-700 border-black/[0.08] hover:bg-slate-50'
                 }`}
                 title={isPhotoRequired ? 'Lampirkan Bukti QRIS (Wajib)' : 'Lampirkan Bukti Tunai (Opsional)'}
               >
@@ -299,7 +305,10 @@ export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
       {/* Camera & Gallery Action Sheet */}
       <CameraActionSheet
         isOpen={isCameraActionOpen}
-        onClose={() => setIsCameraActionOpen(false)}
+        onClose={() => {
+          BlobRegistry.clearAll();
+          setIsCameraActionOpen(false);
+        }}
         onPhotoCaptured={onPhotoCaptured}
         title={paymentMethod === 'QRIS' ? 'Bukti Pembayaran QRIS' : 'Bukti Pembayaran Tunai'}
       />

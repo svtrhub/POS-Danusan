@@ -1,14 +1,14 @@
 {
   "id": "./",
-  "name": "POS DANUSAN",
-  "short_name": "POS DANUSAN",
+  "name": "AYO DANUSAN!",
+  "short_name": "AYO DANUSAN!",
   "description": "Aplikasi kasir POS danusan mobile-first dengan Google Sheets Apps Script, offline queue, dan upload foto QRIS.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0066FF",
-  "background_color": "#F2F2F7",
+  "theme_color": "#007AFF",
+  "background_color": "#FFFFFF",
   "icons": [
     {
       "src": "pwa-192x192.png",

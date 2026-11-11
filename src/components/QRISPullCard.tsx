@@ -253,12 +253,10 @@ export const QRISPullCard: React.FC<QRISPullCardProps> = ({
           }}
         >
           {/* Card Top: Status & Close Button */}
-          <div className="relative pt-3 pb-2 px-4 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-slate-800 tracking-tight">
-                QRIS Pembayaran Resmi
-              </span>
+          <div className="relative pt-3 pb-2 px-4 flex items-center justify-between border-b border-black/[0.06] bg-white shrink-0">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 tracking-tight">
+              <QrCode className="w-3.5 h-3.5 text-[#007AFF]" />
+              <span>QRIS Pembayaran Resmi</span>
             </div>
 
             <button

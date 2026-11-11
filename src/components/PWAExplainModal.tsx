@@ -25,13 +25,20 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
       <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[88dvh] flex flex-col border border-slate-200 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 leading-tight">
-              Panduan Pasang Aplikasi (PWA)
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Cara memasang POS DANUSAN di Layar Utama HP
-            </p>
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/aistudio/logo_pos_compressed_18e1cabe.png"
+              alt="Logo POS Danusan"
+              className="w-10 h-10 rounded-2xl object-contain border border-black/[0.04] bg-white shrink-0 shadow-2xs"
+            />
+            <div>
+              <h2 className="text-base font-bold text-slate-900 leading-tight">
+                AYO DANUSAN!
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Panduan Pasang Aplikasi (PWA) di HP
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -104,7 +111,7 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
                 Ketuk tombol <strong>"Tambah" (Add)</strong> di pojok kanan atas layar.
               </li>
               <li>
-                Ikon <strong>POS DANUSAN</strong> akan terpasang di layar utama iPhone Anda dan siap dibuka dalam mode layar penuh (layar berdiri/portrait).
+                Ikon <strong>AYO DANUSAN!</strong> akan terpasang di layar utama iPhone Anda dan siap dibuka dalam mode layar penuh (layar berdiri/portrait).
               </li>
             </ol>
           </div>

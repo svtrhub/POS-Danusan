@@ -1,10 +1,11 @@
-// Danusan POS Service Worker v6 (Stale-Free Deployments + Low-Speed Network Optimized)
-const CACHE_NAME = 'danusan-pos-v6';
+// Danusan POS Service Worker v7 (Updated Brand Mascot Logo & PWA Icons)
+const CACHE_NAME = 'danusan-pos-v7';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icon.svg',
+  './logo.png',
+  './assets/aistudio/logo_pos_compressed_18e1cabe.png',
   './favicon.png',
   './apple-touch-icon.png',
   './pwa-192x192.png',

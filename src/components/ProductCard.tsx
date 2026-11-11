@@ -26,7 +26,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     if ((e.target as HTMLElement).closest('[data-stepper]')) {
       return;
     }
-    triggerHaptic('medium');
+    triggerHaptic('cart_add');
     onIncrement(product.id);
   };
 
@@ -38,7 +38,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const handlePlusClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    triggerHaptic('medium');
+    triggerHaptic('cart_add');
     onIncrement(product.id);
   };
 
@@ -47,8 +47,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       onClick={handleCardClick}
       className={`pressable relative flex flex-col justify-between p-3 sm:p-3.5 rounded-2xl cursor-pointer select-none touch-manipulation transition-all duration-150 active:scale-[0.985] min-h-[120px] sm:min-h-[124px] ${
         isActive
-          ? 'bg-blue-50/80 border-2 border-[#007AFF] shadow-xs'
-          : 'bg-white border border-black/8 hover:border-black/15 shadow-[0_1px_3px_rgba(0,0,0,0.03)]'
+          ? 'bg-blue-50/60'
+          : 'bg-white hover:bg-white/90'
       }`}
     >
       {/* Top Details */}
@@ -58,7 +58,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {product.name}
           </span>
         </div>
-        <div className="text-[13px] font-medium text-slate-500 num tracking-tight">
+        <div className="text-[13px] font-medium text-slate-500 font-mono tabular-nums tracking-tight">
           Rp {Number(product.price).toLocaleString('id-ID')}
         </div>
       </div>
@@ -67,7 +67,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       <div
         data-stepper="true"
         className={`flex items-center justify-between mt-2.5 px-1.5 py-1 rounded-xl h-10 transition-colors select-none touch-manipulation ${
-          isActive ? 'bg-blue-100/60' : 'bg-[#F2F2F7]'
+          isActive ? 'bg-blue-100/50' : 'bg-[#F5F5F7]'
         }`}
       >
         <button
@@ -76,7 +76,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           disabled={!isActive}
           className={`relative w-8 h-8 rounded-lg flex items-center justify-center font-bold transition active:scale-90 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation ${
             isActive
-              ? 'bg-white text-rose-600 shadow-2xs hover:bg-rose-50'
+              ? 'bg-white text-rose-600 hover:bg-rose-50'
               : 'opacity-20 text-slate-400 cursor-not-allowed'
           }`}
           aria-label="Kurang satu"
@@ -88,7 +88,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           quantity={quantity}
           onQuantityChange={(qty) => onQuantityChange(product.id, qty)}
           ariaLabel={`Jumlah ${product.name}`}
-          className={`w-12 h-8 text-center text-base sm:text-[15px] rounded-lg bg-transparent focus:bg-white focus:ring-2 focus:ring-[#007AFF] focus:shadow-xs outline-none transition selection:bg-blue-200 ${
+          className={`w-12 h-8 text-center text-base sm:text-[15px] rounded-lg bg-transparent focus:bg-white focus:ring-1 focus:ring-[#007AFF] outline-none transition selection:bg-blue-200 font-mono tabular-nums ${
             isActive ? 'text-[#007AFF]' : 'text-slate-400'
           }`}
         />
@@ -98,8 +98,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           onClick={handlePlusClick}
           className={`relative w-8 h-8 rounded-lg flex items-center justify-center font-bold transition active:scale-90 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation ${
             isActive
-              ? 'bg-[#007AFF] text-white shadow-2xs hover:bg-blue-600'
-              : 'bg-white text-slate-800 shadow-2xs hover:bg-slate-50'
+              ? 'bg-[#007AFF] text-white hover:bg-blue-600'
+              : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
           aria-label="Tambah satu"
         >

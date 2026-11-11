@@ -32,13 +32,21 @@ export function useSyncEngine() {
     return syncEngine.fetchHistoryFromSheet(urlOverride);
   }, []);
 
+  const setBatterySaver = useCallback((enabled: boolean) => {
+    syncEngine.setBatterySaver(enabled);
+  }, []);
+
   return {
     queue: state.queue,
     queueLength: state.queue.length,
+    pendingTextCount: state.pendingTextCount,
+    pendingPhotoCount: state.pendingPhotoCount,
     isSyncing: state.isSyncing,
     hasSyncError: state.hasSyncError,
     apiUrl: state.apiUrl,
+    isBatterySaver: state.isBatterySaver,
     setApiUrl,
+    setBatterySaver,
     enqueue,
     processQueue,
     saveProductsToSheet,

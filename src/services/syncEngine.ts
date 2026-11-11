@@ -15,6 +15,9 @@ export interface SyncEngineState {
   hasSyncError: boolean;
   apiUrl: string;
   isReady: boolean;
+  isBatterySaver: boolean;
+  pendingTextCount: number;
+  pendingPhotoCount: number;
 }
 
 type Subscriber = (state: SyncEngineState) => void;
@@ -30,6 +33,8 @@ class SyncEngineService {
   private hasSyncError = false;
   private apiUrl = '';
   private isReady = false;
+  private isBatterySaver = false;
+  private periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
   private subscribers: Set<Subscriber> = new Set();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryAttempt = 0;
@@ -43,7 +48,25 @@ class SyncEngineService {
       // 1. Run migration from legacy localStorage once if applicable
       await migrateFromLocalStorage();
 
-      // 2. Load API URL with dual-layer bi-directional recovery (IndexedDB + localStorage)
+      // 2. Load Battery Saver preference (Instant localStorage + fallback IndexedDB)
+      try {
+        const storedSaver = localStorage.getItem('POS_BATTERY_SAVER');
+        if (storedSaver !== null) {
+          this.isBatterySaver = storedSaver === 'true';
+        } else {
+          const idbSaver = await getConfig<boolean>('batterySaver');
+          if (idbSaver !== null) {
+            this.isBatterySaver = Boolean(idbSaver);
+          }
+        }
+      } catch (_) {}
+
+      // Apply initial battery saver class to DOM document element
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.toggle('battery-saver', this.isBatterySaver);
+      }
+
+      // 3. Load API URL with dual-layer bi-directional recovery (IndexedDB + localStorage)
       const idbUrl = await getConfig<string>('apiUrl');
       let localUrl = '';
       try {
@@ -65,17 +88,20 @@ class SyncEngineService {
         }
       }
 
-      // 3. Rehydrate full crash-proof offline queue from IndexedDB
+      // 4. Rehydrate full crash-proof offline queue from IndexedDB with Priority Sorting
       const diskQueue = await getAllQueueOrders();
-      this.queue = diskQueue;
+      this.queue = this.sortQueueByPriority(diskQueue);
       this.isReady = true;
       this.notify();
 
-      // 4. Auto-sync if there are leftover pending orders from previous session / crash
-      if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
-        setTimeout(() => {
-          this.processQueue();
-        }, 1200);
+      // 5. Periodic background sync management (disabled when Battery Saver is active)
+      if (!this.isBatterySaver) {
+        this.startPeriodicSync();
+        if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
+          setTimeout(() => {
+            this.processQueue();
+          }, 1200);
+        }
       }
     } catch (err) {
       console.warn('SyncEngine init note:', err);
@@ -91,6 +117,10 @@ class SyncEngineService {
           clearTimeout(this.retryTimer);
           this.retryTimer = null;
         }
+
+        // In battery saver mode, avoid unrequested radio wakeups on network flap
+        if (this.isBatterySaver) return;
+
         setTimeout(() => {
           if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
             this.processQueue();
@@ -100,14 +130,85 @@ class SyncEngineService {
     }
   }
 
+  /**
+   * Sorts queue items prioritizing text-only transactions before photo uploads
+   */
+  public sortQueueByPriority(queue: QueuedOrder[]): QueuedOrder[] {
+    const textOrders: QueuedOrder[] = [];
+    const photoOrders: QueuedOrder[] = [];
+
+    for (const item of queue) {
+      if (!item.photo_base64) {
+        textOrders.push(item);
+      } else {
+        photoOrders.push(item);
+      }
+    }
+
+    return [...textOrders, ...photoOrders];
+  }
+
   public getState(): SyncEngineState {
+    const pendingTextCount = this.queue.filter((q) => !q.photo_base64).length;
+    const pendingPhotoCount = this.queue.filter((q) => Boolean(q.photo_base64)).length;
+
     return {
       queue: [...this.queue],
       isSyncing: this.isSyncing,
       hasSyncError: this.hasSyncError,
       apiUrl: this.apiUrl,
       isReady: this.isReady,
+      isBatterySaver: this.isBatterySaver,
+      pendingTextCount,
+      pendingPhotoCount,
     };
+  }
+
+  public startPeriodicSync() {
+    this.stopPeriodicSync();
+    if (this.isBatterySaver) return;
+
+    // Periodic 60s background sync to flush pending queue when online without user interaction
+    this.periodicSyncTimer = setInterval(() => {
+      if (this.queue.length > 0 && this.apiUrl && navigator.onLine && !this.isSyncing) {
+        this.processQueue();
+      }
+    }, 60000);
+  }
+
+  public stopPeriodicSync() {
+    if (this.periodicSyncTimer) {
+      clearInterval(this.periodicSyncTimer);
+      this.periodicSyncTimer = null;
+    }
+  }
+
+  public async setBatterySaver(enabled: boolean) {
+    this.isBatterySaver = enabled;
+
+    try {
+      localStorage.setItem('POS_BATTERY_SAVER', String(enabled));
+      await setConfig('batterySaver', enabled);
+    } catch (_) {}
+
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('battery-saver', enabled);
+    }
+
+    if (enabled) {
+      this.stopPeriodicSync();
+      if (this.retryTimer) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = null;
+      }
+    } else {
+      this.startPeriodicSync();
+      if (this.queue.length > 0 && navigator.onLine) {
+        this.processQueue();
+      }
+    }
+
+    this.notify();
   }
 
   public subscribe(fn: Subscriber): () => void {
@@ -136,8 +237,28 @@ class SyncEngineService {
   }
 
   public async enqueue(order: QueuedOrder): Promise<void> {
-    // 1. In-memory queue update (instant reactivity)
-    this.queue = [...this.queue, order];
+    // 1. Priority Insertion: Text-only transactions (!order.photo_base64) are placed
+    // ahead of any pending photo-bearing transactions in the queue.
+    if (!order.photo_base64) {
+      const lastTextIdx = this.queue.reduce(
+        (lastIdx, item, idx) => (!item.photo_base64 ? idx : lastIdx),
+        -1
+      );
+      if (lastTextIdx === -1) {
+        // Place text order at the front ahead of photo orders
+        this.queue = [order, ...this.queue];
+      } else {
+        // Insert right after last text order, ahead of photo orders
+        this.queue = [
+          ...this.queue.slice(0, lastTextIdx + 1),
+          order,
+          ...this.queue.slice(lastTextIdx + 1),
+        ];
+      }
+    } else {
+      // Photo orders are queued after text orders
+      this.queue = [...this.queue, order];
+    }
     this.notify();
 
     // 2. Asynchronous write-through to IndexedDB disk (Crash-Proof)
@@ -153,10 +274,13 @@ class SyncEngineService {
       console.warn('Failed to persist queued order to IndexedDB:', err);
     }
 
-    // 3. Trigger background auto-sync
-    setTimeout(() => {
-      this.processQueue();
-    }, 100);
+    // 3. Trigger immediate sync (faster 10ms dispatch for high-priority text orders)
+    if (!this.isBatterySaver) {
+      const delay = !order.photo_base64 ? 10 : 100;
+      setTimeout(() => {
+        this.processQueue();
+      }, delay);
+    }
   }
 
   public async processQueue(): Promise<boolean> {
@@ -173,13 +297,19 @@ class SyncEngineService {
     this.hasSyncError = false;
     this.notify();
 
-    let activeQueue = [...this.queue];
     let syncedCount = 0;
 
-    while (activeQueue.length > 0) {
-      const itemToSync = activeQueue[0];
+    // Process all queue items with priority execution:
+    // Text-only transactions are always prioritized first before photo uploads
+    while (this.queue.length > 0) {
+      // Priority Selection: find first text-only transaction in queue
+      const textItemIdx = this.queue.findIndex((item) => !item.photo_base64);
+      const targetIdx = textItemIdx !== -1 ? textItemIdx : 0;
+      const itemToSync = this.queue[targetIdx];
+
+      const isTextOnly = !itemToSync.photo_base64;
       const controller = new AbortController();
-      const timeoutMs = itemToSync.photo_base64 ? ORDER_SYNC_TIMEOUT_MS : ORDER_SYNC_TIMEOUT_FAST_MS;
+      const timeoutMs = isTextOnly ? ORDER_SYNC_TIMEOUT_FAST_MS : ORDER_SYNC_TIMEOUT_MS;
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
@@ -193,8 +323,8 @@ class SyncEngineService {
 
         const data = await res.json();
         if (data.status === 'ok') {
-          activeQueue.shift();
-          this.queue = [...activeQueue];
+          // Remove synced item from queue by order_id
+          this.queue = this.queue.filter((q) => q.order_id !== itemToSync.order_id);
           syncedCount++;
           this.retryAttempt = 0; // Reset backoff on successful transfer
 
@@ -207,20 +337,36 @@ class SyncEngineService {
         }
       } catch (err) {
         clearTimeout(timeoutId);
-        console.warn('Sync queue error (low speed / timeout / network drop):', err);
+        console.warn('Sync queue error (item:', itemToSync.order_id, 'isText:', isTextOnly, '):', err);
         this.hasSyncError = true;
         this.isSyncing = false;
         this.notify();
+
+        // Priority Resilience: If a photo upload encounters an error/timeout and there are still text-only orders pending,
+        // move the failed photo item to the end of the queue so it doesn't block remaining text orders!
+        if (!isTextOnly && this.queue.some((q) => !q.photo_base64)) {
+          console.info('Photo upload delayed, prioritizing remaining text transactions...');
+          this.queue = [
+            ...this.queue.filter((q) => q.order_id !== itemToSync.order_id),
+            itemToSync,
+          ];
+          this.notify();
+          // Resume processing remaining text items immediately
+          setTimeout(() => {
+            this.processQueue();
+          }, 50);
+          return false;
+        }
 
         // Calculate exponential backoff with jitter for low-speed connections
         this.retryAttempt = Math.min(this.retryAttempt + 1, 5);
         const backoffMs = Math.min(30000, Math.round(Math.pow(1.8, this.retryAttempt) * 1500 + Math.random() * 1000));
 
-        // If still online, schedule gentle auto-retry
-        if (navigator.onLine && !this.retryTimer && this.queue.length > 0) {
+        // If still online and NOT in battery saver mode, schedule gentle auto-retry
+        if (navigator.onLine && !this.isBatterySaver && !this.retryTimer && this.queue.length > 0) {
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null;
-            if (this.queue.length > 0 && navigator.onLine) {
+            if (this.queue.length > 0 && navigator.onLine && !this.isBatterySaver) {
               this.processQueue();
             }
           }, backoffMs);

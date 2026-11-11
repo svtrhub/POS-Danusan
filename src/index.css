@@ -54,3 +54,32 @@
   background: rgba(142, 142, 147, 0.35);
   border-radius: 9999px;
 }
+
+/* ---------------------------------------------------------------------------
+ * BATTERY SAVER MODE: Power preservation for low-power mobile devices
+ * --------------------------------------------------------------------------- */
+html.battery-saver *,
+html.battery-saver *::before,
+html.battery-saver *::after {
+  transition-duration: 0.001ms !important;
+}
+
+html.battery-saver .animate-pulse,
+html.battery-saver .animate-bounce,
+html.battery-saver .animate-fade-in {
+  animation: none !important;
+}
+
+/* Eliminate GPU-intensive multi-pass backdrop blur filters */
+html.battery-saver .backdrop-blur-xs,
+html.battery-saver .backdrop-blur-sm,
+html.battery-saver .backdrop-blur-md {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Optimize touch press feedback to instant brightness shift without transform re-compositing */
+html.battery-saver .pressable:active {
+  transform: none !important;
+  filter: brightness(0.92);
+}

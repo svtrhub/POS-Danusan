@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Camera, QrCode, Banknote, Eye } from 'lucide-react';
 import { CameraActionSheet } from './CameraActionSheet';
 import { triggerHaptic } from '../utils/haptics';
+import { BlobRegistry } from '../utils/blobRegistry';
 
 interface PaymentDockProps {
   totalQty: number;
@@ -9,7 +10,7 @@ interface PaymentDockProps {
   paymentMethod: 'QRIS' | 'Cash';
   photoBase64: string;
   onPaymentChange: (method: 'QRIS' | 'Cash') => void;
-  onPhotoCaptured: (base64: string) => void;
+  onPhotoCaptured: (base64: string, sizeBytes?: number) => void;
   onViewPhoto: () => void;
   onSubmit: () => void;
 }
@@ -41,12 +42,12 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
 
   const handleSubmit = () => {
     if (isSubmitDisabled) return;
-    triggerHaptic('success');
+    triggerHaptic('checkout');
     onSubmit();
   };
 
   return (
-    <section className="md:hidden fixed left-0 right-0 bottom-0 z-40 bg-white/95 backdrop-blur-md border-t border-black/8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
+    <section className="md:hidden fixed left-0 right-0 bottom-0 z-40 bg-white/95 backdrop-blur-md border-t border-black/[0.06] shadow-[0_-1px_3px_rgba(0,0,0,0.03)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
       <div className="max-w-xl mx-auto flex flex-col gap-2">
         {/* Controls Row: Apple Inset Segmented Payment & Camera */}
         <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
@@ -74,9 +75,9 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                 triggerHaptic('selection');
                 onPaymentChange('Cash');
               }}
-              className={`pressable flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-bold transition-all active:scale-[0.98] ${
+              className={`pressable flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-semibold transition-all active:scale-[0.98] ${
                 paymentMethod === 'Cash'
-                  ? 'bg-white text-emerald-600 shadow-xs'
+                  ? 'bg-white text-[#007AFF] shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -95,13 +96,13 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                     triggerHaptic('light');
                     onViewPhoto();
                   }}
-                  className="pressable h-10 px-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-1 text-xs font-bold shadow-2xs hover:bg-emerald-100 transition active:scale-95"
+                  className="pressable h-10 px-2 rounded-xl bg-slate-100 border border-black/[0.08] text-slate-800 flex items-center gap-1.5 text-xs font-semibold shadow-2xs hover:bg-slate-200/70 transition active:scale-95"
                   title="Lihat Bukti Pembayaran"
                 >
                   <img
                     src={photoBase64}
                     alt="Bukti pembayaran"
-                    className="w-6 h-6 rounded-md object-cover border border-emerald-300"
+                    className="w-6 h-6 rounded-md object-cover border border-black/[0.08]"
                   />
                   <Eye className="w-3.5 h-3.5" />
                 </button>
@@ -112,7 +113,7 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                     triggerHaptic('light');
                     setIsCameraActionOpen(true);
                   }}
-                  className="pressable h-10 px-2.5 rounded-xl bg-[#F2F2F7] hover:bg-slate-200/80 border border-black/5 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95"
+                  className="pressable h-10 px-2.5 rounded-xl bg-[#F5F5F7] hover:bg-slate-200/80 border border-black/[0.06] text-slate-700 text-xs font-medium flex items-center gap-1 transition active:scale-95"
                   title="Ganti Bukti (Kamera / Galeri)"
                 >
                   <Camera className="w-3.5 h-3.5" />
@@ -126,10 +127,10 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
                   triggerHaptic('light');
                   setIsCameraActionOpen(true);
                 }}
-                className={`pressable h-10 px-3 sm:px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition active:scale-[0.98] shadow-2xs ${
+                className={`pressable h-10 px-3 sm:px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition active:scale-[0.98] shadow-2xs ${
                   isPhotoRequired && totalQty > 0
-                    ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 animate-pulse'
-                    : 'bg-[#F2F2F7] text-slate-700 border-black/5 hover:bg-slate-200/80'
+                    ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600'
+                    : 'bg-[#F5F5F7] text-slate-700 border-black/[0.06] hover:bg-slate-200/80'
                 }`}
                 title={isPhotoRequired ? 'Lampirkan Bukti QRIS (Wajib)' : 'Lampirkan Bukti Tunai (Opsional)'}
               >
@@ -163,7 +164,10 @@ export const PaymentDock: React.FC<PaymentDockProps> = ({
       {/* Camera & Gallery Action Sheet */}
       <CameraActionSheet
         isOpen={isCameraActionOpen}
-        onClose={() => setIsCameraActionOpen(false)}
+        onClose={() => {
+          BlobRegistry.clearAll();
+          setIsCameraActionOpen(false);
+        }}
         onPhotoCaptured={onPhotoCaptured}
         title={paymentMethod === 'QRIS' ? 'Bukti Pembayaran QRIS' : 'Bukti Pembayaran Tunai'}
       />
