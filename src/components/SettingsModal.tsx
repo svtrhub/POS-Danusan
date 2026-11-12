@@ -1,310 +1,622 @@
 import React, { useState } from 'react';
 import {
-  QrCode,
-  Banknote,
-  Camera,
-  Eye,
-  Trash2,
-  ShoppingBag,
+  X,
   Plus,
-  Minus,
+  Trash2,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Upload,
+  RotateCcw,
+  Receipt,
+  ChevronRight,
+  ZapOff,
+  RefreshCw,
+  FileSpreadsheet,
+  Lock,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
-import { Product } from '../types';
-import { CameraActionSheet } from './CameraActionSheet';
-import { NumericQuantityInput } from './NumericQuantityInput';
+import { Product, TeamDivision } from '../types';
 import { triggerHaptic } from '../utils/haptics';
-import { BlobRegistry } from '../utils/blobRegistry';
+import { DEFAULT_QRIS_DATA } from '../assets/defaultQrisData';
 import { APP_LOGO_DATA } from '../assets/logo';
+import { DEFAULT_MENU_SHEET_ID } from '../services/syncEngine';
 
-interface TabletOrderPanelProps {
+interface SettingsModalProps {
+  isOpen: boolean;
+  apiUrl: string;
   products: Product[];
-  cart: { [productId: string]: number };
-  totalQty: number;
-  netTotal: number;
-  paymentMethod: 'QRIS' | 'Cash';
-  photoBase64: string;
-  onIncrement: (productId: string) => void;
-  onDecrement: (productId: string) => void;
-  onQuantityChange: (productId: string, quantity: number) => void;
-  onClearCart: () => void;
-  onPaymentChange: (method: 'QRIS' | 'Cash') => void;
-  onPhotoCaptured: (base64: string, sizeBytes?: number) => void;
-  onViewPhoto: () => void;
-  onSubmit: () => void;
+  customQrisImage?: string;
+  isBatterySaver?: boolean;
+  team?: TeamDivision;
+  menuSheetId?: string;
+  onClose: () => void;
+  onSave: (newUrl: string, updatedProducts: Product[]) => Promise<void>;
+  onTeamChange?: (team: TeamDivision) => void;
+  onMenuSheetIdChange?: (sheetInput: string) => void;
+  onFetchMenu?: (
+    team: TeamDivision,
+    sheetId?: string,
+    existingProducts?: Product[]
+  ) => Promise<Product[]>;
+  onOpenHistory?: () => void;
+  onSaveQrisImage?: (base64: string) => void;
+  onResetQrisImage?: () => void;
+  onToggleBatterySaver?: (enabled: boolean) => void;
 }
 
-export const TabletOrderPanel: React.FC<TabletOrderPanelProps> = ({
+const TEAMS: TeamDivision[] = ['Team A', 'Team B', 'Team C'];
+
+export const SettingsModal: React.FC<SettingsModalProps> = ({
+  isOpen,
+  apiUrl,
   products,
-  cart,
-  totalQty,
-  netTotal,
-  paymentMethod,
-  photoBase64,
-  onIncrement,
-  onDecrement,
-  onQuantityChange,
-  onClearCart,
-  onPaymentChange,
-  onPhotoCaptured,
-  onViewPhoto,
-  onSubmit,
+  customQrisImage,
+  isBatterySaver = false,
+  team = 'Team A',
+  menuSheetId = DEFAULT_MENU_SHEET_ID,
+  onClose,
+  onSave,
+  onTeamChange,
+  onMenuSheetIdChange,
+  onFetchMenu,
+  onOpenHistory,
+  onSaveQrisImage,
+  onResetQrisImage,
+  onToggleBatterySaver,
 }) => {
-  const activeItems = products
-    .filter((p) => (cart[p.id] || 0) > 0)
-    .map((p) => ({
-      product: p,
-      quantity: cart[p.id],
-      subtotal: p.price * cart[p.id],
-    }));
+  const [urlInput, setUrlInput] = useState(apiUrl);
+  const [selectedTeam, setSelectedTeam] = useState<TeamDivision>(team);
+  const [sheetIdInput, setSheetIdInput] = useState<string>(menuSheetId || DEFAULT_MENU_SHEET_ID);
+  const [showSheetConfig, setShowSheetConfig] = useState(false);
+  const [isSyncingMenu, setIsSyncingMenu] = useState(false);
+  const [editorProducts, setEditorProducts] = useState<Product[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const isPhotoRequired = paymentMethod === 'QRIS';
-  const hasPhoto = Boolean(photoBase64);
-  const isSubmitDisabled = totalQty === 0 || (isPhotoRequired && !hasPhoto);
+  // Initialize editor list and props when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setUrlInput(apiUrl);
+      setSelectedTeam(team);
+      setSheetIdInput(menuSheetId || DEFAULT_MENU_SHEET_ID);
+      setEditorProducts(JSON.parse(JSON.stringify(products)));
+      setFeedback(null);
+    }
+  }, [isOpen, apiUrl, team, menuSheetId, products]);
 
-  let submitButtonText = 'Simpan Pesanan';
-  if (totalQty === 0) {
-    submitButtonText = 'Pilih Menu';
-  } else if (isPhotoRequired && !hasPhoto) {
-    submitButtonText = 'Wajib Foto Bukti QRIS';
-  }
+  if (!isOpen) return null;
 
-  const [isCameraActionOpen, setIsCameraActionOpen] = useState(false);
+  const handleSelectTeam = async (newTeam: TeamDivision) => {
+    triggerHaptic('light');
+    setSelectedTeam(newTeam);
+    if (onTeamChange) {
+      onTeamChange(newTeam);
+    }
 
-  const handleSubmit = () => {
-    if (isSubmitDisabled) return;
-    triggerHaptic('checkout');
-    onSubmit();
+    // Auto fetch menu matrix for newly selected team if fetcher provided
+    if (onFetchMenu) {
+      setIsSyncingMenu(true);
+      try {
+        const fetched = await onFetchMenu(newTeam, sheetIdInput.trim(), editorProducts);
+        if (fetched && fetched.length > 0) {
+          setEditorProducts(fetched);
+          setFeedback({
+            type: 'success',
+            message: `✓ Menu ${newTeam} berhasil dimuat (${fetched.length} item)`,
+          });
+          triggerHaptic('success');
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
+        setFeedback({ type: 'error', message: msg });
+        triggerHaptic('warning');
+      } finally {
+        setIsSyncingMenu(false);
+      }
+    }
+  };
+
+  const handleSyncMenuClick = async () => {
+    triggerHaptic('medium');
+    if (!onFetchMenu) return;
+
+    setIsSyncingMenu(true);
+    setFeedback(null);
+    try {
+      const fetched = await onFetchMenu(selectedTeam, sheetIdInput.trim(), editorProducts);
+      if (fetched && fetched.length > 0) {
+        setEditorProducts(fetched);
+        setFeedback({
+          type: 'success',
+          message: `✓ Menu ${selectedTeam} tersinkron (${fetched.length} item)`,
+        });
+        triggerHaptic('success');
+      } else {
+        setFeedback({
+          type: 'error',
+          message: 'Sheet tidak mengembalikan item untuk divisi ini.',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
+      setFeedback({ type: 'error', message: msg });
+      triggerHaptic('warning');
+    } finally {
+      setIsSyncingMenu(false);
+    }
+  };
+
+  const handleAddCustomRow = () => {
+    triggerHaptic('light');
+    setEditorProducts([
+      ...editorProducts,
+      {
+        id: 'custom_' + Date.now(),
+        name: '',
+        original_name: '',
+        price: 5000,
+        is_custom: true,
+      },
+    ]);
+  };
+
+  const handleRemoveRow = (idx: number) => {
+    triggerHaptic('warning');
+    setEditorProducts(editorProducts.filter((_: Product, i: number) => i !== idx));
+  };
+
+  const handleQrisFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (typeof ev.target?.result === 'string') {
+        if (onSaveQrisImage) {
+          onSaveQrisImage(ev.target.result);
+          triggerHaptic('success');
+          setFeedback({ type: 'success', message: 'Gambar QRIS (WebP) berhasil disimpan!' });
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleFieldChange = (idx: number, field: 'name' | 'price', value: string | number) => {
+    const next = [...editorProducts];
+    if (field === 'name') {
+      next[idx].name = String(value);
+      if (!next[idx].original_name) next[idx].original_name = String(value);
+    } else {
+      next[idx].price = Math.max(0, parseInt(String(value), 10) || 0);
+    }
+    setEditorProducts(next);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setFeedback(null);
+
+    if (sheetIdInput.trim() !== menuSheetId && onMenuSheetIdChange) {
+      onMenuSheetIdChange(sheetIdInput.trim());
+    }
+
+    if (selectedTeam !== team && onTeamChange) {
+      onTeamChange(selectedTeam);
+    }
+
+    const cleaned = editorProducts
+      .filter((p: Product) => p.name.trim() !== '')
+      .map((p: Product) => ({
+        ...p,
+        name: p.name.trim(),
+        original_name: p.original_name || p.name.trim(),
+        price: Number(p.price) || 0,
+      }));
+
+    try {
+      await onSave(urlInput.trim(), cleaned.length > 0 ? cleaned : products);
+      triggerHaptic('success');
+      setFeedback({ type: 'success', message: 'Pengaturan & Menu berhasil disimpan!' });
+      setTimeout(() => {
+        onClose();
+      }, 700);
+    } catch (err: unknown) {
+      triggerHaptic('warning');
+      const msg = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan';
+      setFeedback({ type: 'error', message: msg });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <aside className="hidden md:flex flex-col w-[360px] lg:w-[380px] shrink-0 h-full max-h-full overflow-hidden bg-white/90 backdrop-blur-md border-l border-slate-200 select-none shadow-[0_0_0_1px_rgba(15,23,42,0.02)]">
-      <div className="h-14 px-3.5 sm:px-4 flex items-center justify-between border-b border-slate-200/80 bg-white/90 shrink-0 select-none">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            src={APP_LOGO_DATA}
-            alt="Logo AYO DANUSAN!"
-            className="w-6 h-6 rounded-md object-contain border border-slate-200 bg-white shrink-0"
-          />
-          <div className="min-w-0">
-            <h2 className="text-[13px] font-semibold text-slate-900 tracking-[-0.02em]">
-              Pesanan Kasir
-            </h2>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">
+      {/* Modal Surface */}
+      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col border border-slate-200/80 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <img
+              src={APP_LOGO_DATA}
+              alt="Logo AYO DANUSAN!"
+              className="w-7 h-7 rounded-lg object-contain border border-black/[0.04] bg-white shrink-0"
+            />
+            <div>
+              <h2 className="text-base font-bold text-slate-900 leading-tight">
+                Pengaturan &amp; Menu
+              </h2>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Sinkronisasi menu divisi &amp; kasir
+              </p>
+            </div>
           </div>
-          <span className="text-[11px] text-slate-400 font-mono tabular-nums">
-            {totalQty} item
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onClose();
+            }}
+            className="relative w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (totalQty === 0 && !hasPhoto) return;
-            triggerHaptic('warning');
-            onClearCart();
-          }}
-          disabled={totalQty === 0 && !hasPhoto}
-          className={`pressable h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-[11px] font-bold transition-all touch-manipulation ${
-            totalQty > 0 || hasPhoto
-              ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 active:scale-95'
-              : 'opacity-40 text-slate-400 border border-transparent cursor-not-allowed pointer-events-none'
-          }`}
-          title={totalQty > 0 || hasPhoto ? 'Reset Semua Pesanan & Bukti' : 'Keranjang Kosong'}
-          aria-label="Reset Keranjang"
-        >
-          <Trash2 className="w-3.5 h-3.5 shrink-0" />
-          <span>Reset</span>
-        </button>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
-        {activeItems.length > 0 ? (
-          activeItems.map(({ product, quantity, subtotal }) => (
+        {/* Body Content */}
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
+          {/* Status Feedback banner */}
+          {feedback && (
             <div
-              key={product.id}
-              className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
-            >
-              <div className="min-w-0 flex-1 pr-2">
-                <div className="text-[12px] font-bold text-slate-800 truncate tracking-[-0.02em]">
-                  {product.name}
-                </div>
-                <div className="text-[11px] text-slate-400 num">
-                  @ Rp {product.price.toLocaleString('id-ID')}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-0.5 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('light');
-                      onDecrement(product.id);
-                    }}
-                    className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-90"
-                    aria-label="Kurang satu"
-                  >
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <NumericQuantityInput
-                    quantity={quantity}
-                    onQuantityChange={(qty) => onQuantityChange(product.id, qty)}
-                    ariaLabel={`Jumlah ${product.name}`}
-                    className="w-7 h-6 text-center text-[11px] font-bold text-[#007AFF] num rounded bg-transparent focus:bg-blue-50 focus:ring-1 focus:ring-[#007AFF] outline-none transition selection:bg-blue-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('cart_add');
-                      onIncrement(product.id);
-                    }}
-                    className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-90"
-                    aria-label="Tambah satu"
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
-
-                <div className="w-16 text-right text-[11px] font-extrabold text-slate-800 num tracking-[-0.02em]">
-                  Rp {subtotal.toLocaleString('id-ID')}
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="h-full min-h-[100px] flex flex-col items-center justify-center text-center p-4 text-slate-400">
-            <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center mb-1.5">
-              <ShoppingBag className="w-5 h-5 text-slate-400 stroke-[1.7]" />
-            </div>
-            <p className="text-xs font-bold text-slate-600">Keranjang Kosong</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Ketuk menu di sebelah kiri untuk menambah item
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="p-3 bg-slate-50/90 border-t border-slate-200/80 space-y-2.5 shrink-0 mt-auto">
-        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-          <div className="grid grid-cols-2 bg-[#E8EBF0] p-0.5 rounded-2xl h-10 border border-slate-200/80">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('selection');
-                onPaymentChange('QRIS');
-                window.dispatchEvent(new CustomEvent('open-qris'));
-              }}
-              className={`pressable flex items-center justify-center gap-1.5 rounded-[14px] text-[11px] font-bold transition-all active:scale-[0.98] ${
-                paymentMethod === 'QRIS'
-                  ? 'bg-white text-[#007AFF] shadow-[0_1px_2px_rgba(15,23,42,0.08)]'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Pilih QRIS (Tampilkan Barcode QRIS)"
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              <span>QRIS</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('selection');
-                onPaymentChange('Cash');
-              }}
-              className={`pressable flex items-center justify-center gap-1.5 rounded-[14px] text-[11px] font-semibold transition-all active:scale-[0.98] ${
-                paymentMethod === 'Cash'
-                  ? 'bg-white text-[#007AFF] shadow-[0_1px_2px_rgba(15,23,42,0.08)]'
-                  : 'text-slate-600 hover:text-slate-900'
+              className={`p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
+                feedback.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
             >
-              <Banknote className="w-3.5 h-3.5" />
-              <span>Tunai</span>
-            </button>
-          </div>
+              {feedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{feedback.message}</span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-1.5">
-            {hasPhoto ? (
-              <div className="flex items-center gap-1.5">
+          {/* Section: Divisi Kasir (Team Segmented Control) */}
+          <div className="space-y-2 pb-3 border-b border-black/[0.06]">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-[#007AFF]" />
+                <span>Divisi Penjualan (Sheet Master)</span>
+              </label>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={`https://docs.google.com/spreadsheets/d/${sheetIdInput}/edit`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-[#007AFF] transition-colors touch-manipulation"
+                  title="Buka Spreadsheet Master di Google Sheets"
+                >
+                  <span>Buka Sheet</span>
+                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                </a>
+                <span className="text-slate-200">|</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    onViewPhoto();
-                  }}
-                  className="pressable h-10 px-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex items-center gap-1 text-[11px] font-semibold shadow-[0_1px_0_rgba(15,23,42,0.04)] hover:bg-slate-200/80"
-                  title="Lihat Bukti Pembayaran"
+                  onClick={handleSyncMenuClick}
+                  disabled={isSyncingMenu}
+                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:text-[#005bb5] active:scale-95 disabled:opacity-50 touch-manipulation"
+                  title="Tarik daftar menu terbaru dari Google Sheet Master"
                 >
-                  <img
-                    src={photoBase64}
-                    alt="Bukti pembayaran"
-                    className="w-6 h-6 rounded-md object-cover border border-slate-200"
-                  />
-                  <Eye className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    setIsCameraActionOpen(true);
-                  }}
-                  className="pressable h-10 px-2.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium flex items-center gap-1 transition"
-                  title="Ganti Bukti (Kamera / Galeri)"
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                  <span>Ganti</span>
+                  <RefreshCw className={`w-3 h-3 ${isSyncingMenu ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingMenu ? 'Menyinkronkan...' : 'Sinkron Sheet'}</span>
                 </button>
               </div>
-            ) : (
+            </div>
+
+            {/* iOS Style Segmented Control */}
+            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl gap-1">
+              {TEAMS.map((t) => {
+                const isActive = selectedTeam === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleSelectTeam(t)}
+                    className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all duration-150 touch-manipulation ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-xs ring-1 ring-black/[0.04]'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sheet Link Info & Optional ID config */}
+            <div className="pt-1">
               <button
                 type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setIsCameraActionOpen(true);
-                }}
-                className={`pressable h-10 px-3.5 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 transition ${
-                  isPhotoRequired && totalQty > 0
-                    ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600 shadow-[0_8px_16px_rgba(0,122,255,0.18)]'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                }`}
-                title={isPhotoRequired ? 'Lampirkan Bukti QRIS (Wajib)' : 'Lampirkan Bukti Tunai (Opsional)'}
+                onClick={() => setShowSheetConfig(!showSheetConfig)}
+                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 inline-flex items-center gap-1"
               >
-                <Camera className="w-4 h-4 text-slate-500" />
-                <span>{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti'}</span>
+                <span>{showSheetConfig ? 'Sembunyikan ID / Link Sheet' : 'Atur ID / Link Spreadsheet Master'}</span>
+                <ChevronRight className={`w-3 h-3 transition-transform ${showSheetConfig ? 'rotate-90' : ''}`} />
               </button>
-            )}
+
+              {showSheetConfig && (
+                <div className="mt-2 space-y-2 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06]">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="font-medium">URL atau ID Google Sheet:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSheetIdInput(DEFAULT_MENU_SHEET_ID)}
+                      className="text-[#007AFF] hover:underline text-[10px]"
+                    >
+                      Reset Bawaan
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={sheetIdInput}
+                    onChange={(e) => setSheetIdInput(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/.../edit atau ID Sheet"
+                    className="w-full h-8 px-2.5 rounded-lg bg-white border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    💡 <strong>Tips:</strong> Pastikan spreadsheet kamu dibagikan dengan akses <em>&quot;Siapa saja yang memiliki link sebagai Pelihat (Viewer)&quot;</em> agar data dapat dibaca oleh POS.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section: Open Transaction History */}
+          {onOpenHistory && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenHistory();
+              }}
+              className="pressable w-full py-3 px-1 border-b border-black/[0.06] text-left flex items-center justify-between gap-3 transition hover:bg-black/[0.02]"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-medium text-slate-900 truncate">
+                  Riwayat Transaksi
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-medium text-slate-400 shrink-0">
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+          )}
+
+          {/* Section: Mode Hemat Baterai */}
+          <div className="py-3 px-1 border-b border-black/[0.06] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                <ZapOff className="w-4 h-4" />
+              </div>
+              <span className="text-sm font-medium text-slate-900">
+                Mode Hemat Baterai
+              </span>
+            </div>
+
+            {/* Apple iOS Style Switch Toggle */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(isBatterySaver)}
+              onClick={() => {
+                triggerHaptic('medium');
+                if (onToggleBatterySaver) {
+                  onToggleBatterySaver(!isBatterySaver);
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:ring-offset-2 touch-manipulation ${
+                isBatterySaver ? 'bg-[#007AFF]' : 'bg-slate-200'
+              }`}
+              title="Mode Hemat Baterai"
+              aria-label="Toggle Mode Hemat Baterai"
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                  isBatterySaver ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Section: URL Apps Script (Backend Pengiriman Transaksi) */}
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-medium text-slate-500">
+              URL Apps Script (Tujuan Transaksi)
+            </label>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
+            />
+          </div>
+
+          {/* Section: QRIS Merchant */}
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-medium text-slate-500">
+              Gambar QRIS
+            </label>
+
+            <div className="p-2.5 border border-black/[0.06] rounded-xl bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-16 bg-white border border-black/[0.06] rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-1">
+                  <img
+                    src={customQrisImage || DEFAULT_QRIS_DATA}
+                    alt="QRIS"
+                    className="w-full h-full object-contain rounded"
+                  />
+                </div>
+
+                <div className="flex-1 space-y-1.5">
+                  <label className="cursor-pointer select-none pressable w-full h-8 px-3 rounded-lg bg-white hover:bg-slate-50 border border-black/[0.08] text-xs font-medium text-slate-700 flex items-center justify-center gap-1.5 transition active:scale-98">
+                    <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
+                    <span>Ganti Gambar QRIS</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleQrisFileChange}
+                      className="sr-only"
+                    />
+                  </label>
+
+                  {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('warning');
+                        onResetQrisImage();
+                        setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
+                      }}
+                      className="pressable w-full h-7 px-2 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Kembalikan ke Bawaan</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Menu Editor & Differentiation */}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-xs font-bold text-slate-900">
+                  Daftar Menu &amp; Harga ({selectedTeam})
+                </label>
+                <p className="text-[10px] text-slate-400">
+                  Item Sheet terkunci namanya; item Custom bebas diubah.
+                </p>
+              </div>
+              <span className="text-xs text-slate-400 font-mono tabular-nums">
+                {editorProducts.length} item
+              </span>
+            </div>
+
+            <div className="space-y-2 max-h-[300px] overflow-y-auto px-0.5">
+              {editorProducts.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  Belum ada menu untuk divisi ini. Klik tombol <strong>Sinkron Sheet</strong> di atas atau tambah menu custom di bawah.
+                </div>
+              ) : (
+                editorProducts.map((item: Product, idx: number) => {
+                  const isCustom = Boolean(item.is_custom);
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className="grid grid-cols-[1fr_96px_36px] gap-1.5 items-center w-full"
+                    >
+                      {/* Name input with tag */}
+                      <div className="relative min-w-0 flex items-center">
+                        <input
+                          type="text"
+                          value={item.name}
+                          readOnly={!isCustom}
+                          onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
+                          placeholder="Nama Barang"
+                          className={`min-w-0 w-full h-9 pl-2.5 pr-14 rounded-lg border text-xs font-medium text-slate-800 transition focus:outline-none ${
+                            !isCustom
+                              ? 'bg-slate-100/70 border-slate-200 cursor-default select-none'
+                              : 'bg-white border-black/[0.08] focus:ring-1 focus:ring-[#007AFF]'
+                          }`}
+                        />
+                        <span
+                          className={`absolute right-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 pointer-events-none ${
+                            !isCustom
+                              ? 'bg-slate-200 text-slate-600'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {isCustom ? 'Custom' : 'Sheet'}
+                        </span>
+                      </div>
+
+                      {/* Price input (Always editable by cashier) */}
+                      <div className="relative min-w-0 w-[96px] shrink-0">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
+                          Rp
+                        </span>
+                        <input
+                          type="number"
+                          value={item.price}
+                          onChange={(e) => handleFieldChange(idx, 'price', e.target.value)}
+                          placeholder="Harga"
+                          className="h-9 pl-7 pr-2 w-full rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-medium text-right text-slate-800 font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
+                        />
+                      </div>
+
+                      {/* Action (Delete for custom, Lock indicator for sheet) */}
+                      {isCustom ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRow(idx)}
+                          className="pressable w-8 h-9 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90 touch-manipulation"
+                          title="Hapus Menu Custom"
+                          aria-label="Hapus Menu Custom"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <div
+                          className="w-8 h-9 flex items-center justify-center text-slate-300"
+                          title="Menu bawaan Sheet Master (tidak dapat dihapus satuan, nama dikunci)"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Add Custom Row Button */}
+            <button
+              type="button"
+              onClick={handleAddCustomRow}
+              className="pressable w-full h-9 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-[#007AFF] text-xs font-medium flex items-center justify-center gap-1.5 transition active:scale-98 touch-manipulation"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Tambah Menu Mendadak (Custom)</span>
+            </button>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isSubmitDisabled}
-          className={`pressable w-full h-12 rounded-2xl font-bold flex items-center justify-between px-4 transition duration-100 select-none ${
-            isSubmitDisabled
-              ? 'bg-[#E5E5EA] text-slate-400 cursor-not-allowed border border-slate-200'
-              : 'bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white shadow-[0_8px_16px_rgba(0,122,255,0.18)]'
-          }`}
-        >
-          <span className="text-[14px] font-bold tracking-[-0.02em]">
-            {submitButtonText}
-          </span>
-          <span className="text-[15px] font-extrabold num tracking-[-0.03em]">
-            Rp {Number(netTotal || 0).toLocaleString('id-ID')}
-          </span>
-        </button>
+        {/* Footer Actions */}
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/[0.06] flex items-center justify-end shrink-0">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs transition disabled:opacity-50 touch-manipulation"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>{isSaving ? 'Menyimpan...' : 'Simpan & Terapkan'}</span>
+          </button>
+        </div>
       </div>
-
-      <CameraActionSheet
-        isOpen={isCameraActionOpen}
-        onClose={() => {
-          BlobRegistry.clearAll();
-          setIsCameraActionOpen(false);
-        }}
-        onPhotoCaptured={onPhotoCaptured}
-        title={paymentMethod === 'QRIS' ? 'Bukti Pembayaran QRIS' : 'Bukti Pembayaran Tunai'}
-      />
-    </aside>
+    </div>
   );
 };

@@ -1,1030 +1,702 @@
-import React, { useState } from 'react';
+import { QueuedOrder, Product, SalesHistoryItem, OrderItem, TeamDivision } from '../types';
+import { markOrderSyncedLocally } from '../utils/historyStorage';
 import {
-  X,
-  Plus,
-  Trash2,
-  Save,
-  CheckCircle2,
-  AlertCircle,
-  Upload,
-  RotateCcw,
-  Receipt,
-  ChevronRight,
-  ZapOff,
-  RefreshCw,
-  FileSpreadsheet,
-  Lock,
-  ExternalLink,
-} from 'lucide-react';
-import { Product, TeamDivision } from '../types';
-import { triggerHaptic } from '../utils/haptics';
-import { DEFAULT_QRIS_DATA } from '../assets/defaultQrisData';
-import { APP_LOGO_DATA } from '../assets/logo';
-import { DEFAULT_MENU_SHEET_ID } from '../services/syncEngine';
+  saveQueueOrder,
+  removeQueueOrder,
+  getAllQueueOrders,
+  setConfig,
+  getConfig,
+  migrateFromLocalStorage,
+} from './indexedDBStorage';
 
-interface SettingsModalProps {
-  isOpen: boolean;
+export const DEFAULT_MENU_SHEET_ID = '1r6az25v1wPH5qcKc9YyoHY9qp4ejTmAVFsgv3YfhUsI';
+
+export interface SyncEngineState {
+  queue: QueuedOrder[];
+  isSyncing: boolean;
+  hasSyncError: boolean;
   apiUrl: string;
-  products: Product[];
-  customQrisImage?: string;
-  isBatterySaver?: boolean;
-  team?: TeamDivision;
-  menuSheetId?: string;
-  onClose: () => void;
-  onSave: (newUrl: string, updatedProducts: Product[]) => Promise<void>;
-  onTeamChange?: (team: TeamDivision) => void;
-  onMenuSheetIdChange?: (sheetInput: string) => void;
-  onFetchMenu?: (
-    team: TeamDivision,
-    sheetId?: string,
-    existingProducts?: Product[]
-  ) => Promise<Product[]>;
-  onOpenHistory?: () => void;
-  onSaveQrisImage?: (base64: string) => void;
-  onResetQrisImage?: () => void;
-  onToggleBatterySaver?: (enabled: boolean) => void;
+  team: TeamDivision;
+  menuSheetId: string;
+  isReady: boolean;
+  isBatterySaver: boolean;
+  pendingTextCount: number;
+  pendingPhotoCount: number;
 }
 
-const TEAMS: TeamDivision[] = ['Team A', 'Team B', 'Team C'];
+type Subscriber = (state: SyncEngineState) => void;
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({
-  isOpen,
-  apiUrl,
-  products,
-  customQrisImage,
-  isBatterySaver = false,
-  team = 'Team A',
-  menuSheetId = DEFAULT_MENU_SHEET_ID,
-  onClose,
-  onSave,
-  onTeamChange,
-  onMenuSheetIdChange,
-  onFetchMenu,
-  onOpenHistory,
-  onSaveQrisImage,
-  onResetQrisImage,
-  onToggleBatterySaver,
-}) => {
-  const [urlInput, setUrlInput] = useState(apiUrl);
-  const [selectedTeam, setSelectedTeam] = useState<TeamDivision>(team);
-  const [sheetIdInput, setSheetIdInput] = useState<string>(menuSheetId || DEFAULT_MENU_SHEET_ID);
-  const [isSyncingMenu, setIsSyncingMenu] = useState(false);
-  const [editorProducts, setEditorProducts] = useState<Product[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+// Network timeout constants tuned for mobile cellular & low-speed networks
+const ORDER_SYNC_TIMEOUT_MS = 25000;
+const ORDER_SYNC_TIMEOUT_FAST_MS = 10000; // Lightweight text-only payload (<1KB)
+const FETCH_TIMEOUT_MS = 15000;
 
-  React.useEffect(() => {
-    if (isOpen) {
-      setUrlInput(apiUrl);
-      setSelectedTeam(team);
-      setSheetIdInput(menuSheetId || DEFAULT_MENU_SHEET_ID);
-      setEditorProducts(JSON.parse(JSON.stringify(products)));
-      setFeedback(null);
-    }
-  }, [isOpen, apiUrl, team, menuSheetId, products]);
+class SyncEngineService {
+  private queue: QueuedOrder[] = [];
+  private isSyncing = false;
+  private hasSyncError = false;
+  private apiUrl = '';
+  private team: TeamDivision = 'Team A';
+  private menuSheetId = DEFAULT_MENU_SHEET_ID;
+  private isReady = false;
+  private isBatterySaver = false;
+  private periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private subscribers: Set<Subscriber> = new Set();
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAttempt = 0;
 
-  if (!isOpen) return null;
+  constructor() {
+    this.init();
+  }
 
-  const handleSelectTeam = async (newTeam: TeamDivision) => {
-    triggerHaptic('light');
-    setSelectedTeam(newTeam);
-    if (onTeamChange) {
-      onTeamChange(newTeam);
-    }
+  private async init() {
+    try {
+      // 1. Run migration from legacy localStorage once if applicable
+      await migrateFromLocalStorage();
 
-    if (onFetchMenu) {
-      setIsSyncingMenu(true);
+      // 2. Load Battery Saver preference (Instant localStorage + fallback IndexedDB)
       try {
-        const fetched = await onFetchMenu(newTeam, sheetIdInput.trim(), editorProducts);
-        if (fetched && fetched.length > 0) {
-          setEditorProducts(fetched);
-          setFeedback({
-            type: 'success',
-            message: `✓ Menu ${newTeam} berhasil dimuat (${fetched.length} item)`,
-          });
-          triggerHaptic('success');
+        const storedSaver = localStorage.getItem('POS_BATTERY_SAVER');
+        if (storedSaver !== null) {
+          this.isBatterySaver = storedSaver === 'true';
+        } else {
+          const idbSaver = await getConfig<boolean>('batterySaver');
+          if (idbSaver !== null) {
+            this.isBatterySaver = Boolean(idbSaver);
+          }
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
-        setFeedback({ type: 'error', message: msg });
-        triggerHaptic('warning');
-      } finally {
-        setIsSyncingMenu(false);
+      } catch (_) {}
+
+      // Apply initial battery saver class to DOM document element
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.toggle('battery-saver', this.isBatterySaver);
       }
+
+      // 3. Load API URL with dual-layer bi-directional recovery (IndexedDB + localStorage)
+      const idbUrl = await getConfig<string>('apiUrl');
+      let localUrl = '';
+      try {
+        localUrl = localStorage.getItem('POS_API_URL') || '';
+      } catch (_) {}
+
+      const resolvedUrl = (idbUrl || localUrl || '').trim();
+      this.apiUrl = resolvedUrl;
+
+      // Self-heal both persistent stores if one was cleared
+      if (resolvedUrl) {
+        if (!idbUrl) {
+          await setConfig('apiUrl', resolvedUrl).catch(() => {});
+        }
+        if (!localUrl) {
+          try {
+            localStorage.setItem('POS_API_URL', resolvedUrl);
+          } catch (_) {}
+        }
+      }
+
+      // 4. Load Team Division preference (Team A / Team B / Team C)
+      try {
+        const storedTeam = localStorage.getItem('POS_TEAM') as TeamDivision | null;
+        if (storedTeam === 'Team A' || storedTeam === 'Team B' || storedTeam === 'Team C') {
+          this.team = storedTeam;
+        } else {
+          const idbTeam = await getConfig<TeamDivision>('team');
+          if (idbTeam === 'Team A' || idbTeam === 'Team B' || idbTeam === 'Team C') {
+            this.team = idbTeam;
+          }
+        }
+      } catch (_) {}
+
+      // 5. Load Menu Sheet ID / URL
+      try {
+        const storedSheet = localStorage.getItem('POS_MENU_SHEET');
+        if (storedSheet) {
+          this.menuSheetId = storedSheet;
+        } else {
+          const idbSheet = await getConfig<string>('menuSheet');
+          if (idbSheet) {
+            this.menuSheetId = idbSheet;
+          }
+        }
+      } catch (_) {}
+
+      // 6. Rehydrate full crash-proof offline queue from IndexedDB with Priority Sorting
+      const diskQueue = await getAllQueueOrders();
+      this.queue = this.sortQueueByPriority(diskQueue);
+      this.isReady = true;
+      this.notify();
+
+      // 7. Periodic background sync management (disabled when Battery Saver is active)
+      if (!this.isBatterySaver) {
+        this.startPeriodicSync();
+        if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
+          setTimeout(() => {
+            this.processQueue();
+          }, 1200);
+        }
+      }
+    } catch (err) {
+      console.warn('SyncEngine init note:', err);
+      this.isReady = true;
+      this.notify();
     }
-  };
 
-  const handleSyncMenuClick = async () => {
-    triggerHaptic('medium');
-    if (!onFetchMenu) return;
+    // Auto-sync when device regains connectivity with 1.5s cellular radio warmup
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        this.retryAttempt = 0;
+        if (this.retryTimer) {
+          clearTimeout(this.retryTimer);
+          this.retryTimer = null;
+        }
 
-    setIsSyncingMenu(true);
-    setFeedback(null);
-    try {
-      const fetched = await onFetchMenu(selectedTeam, sheetIdInput.trim(), editorProducts);
-      if (fetched && fetched.length > 0) {
-        setEditorProducts(fetched);
-        setFeedback({
-          type: 'success',
-          message: `✓ Menu ${selectedTeam} tersinkron (${fetched.length} item)`,
-        });
-        triggerHaptic('success');
+        // In battery saver mode, avoid unrequested radio wakeups on network flap
+        if (this.isBatterySaver) return;
+
+        setTimeout(() => {
+          if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
+            this.processQueue();
+          }
+        }, 1500);
+      });
+    }
+  }
+
+  /**
+   * Sorts queue items prioritizing text-only transactions before photo uploads
+   */
+  public sortQueueByPriority(queue: QueuedOrder[]): QueuedOrder[] {
+    const textOrders: QueuedOrder[] = [];
+    const photoOrders: QueuedOrder[] = [];
+
+    for (const item of queue) {
+      if (!item.photo_base64) {
+        textOrders.push(item);
       } else {
-        setFeedback({
-          type: 'error',
-          message: 'Sheet tidak mengembalikan item untuk divisi ini.',
-        });
+        photoOrders.push(item);
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
-      setFeedback({ type: 'error', message: msg });
-      triggerHaptic('warning');
-    } finally {
-      setIsSyncingMenu(false);
     }
-  };
 
-  const handleAddCustomRow = () => {
-    triggerHaptic('light');
-    setEditorProducts((current) => [
-      ...current,
-      {
-        id: 'custom_' + Date.now(),
-        name: '',
-        original_name: '',
-        price: 5000,
-        is_custom: true,
-      },
-    ]);
-  };
+    return [...textOrders, ...photoOrders];
+  }
 
-  const handleRemoveRow = (idx: number) => {
-    triggerHaptic('warning');
-    setEditorProducts((current) => current.filter((_: Product, i: number) => i !== idx));
-  };
+  public getState(): SyncEngineState {
+    const pendingTextCount = this.queue.filter((q) => !q.photo_base64).length;
+    const pendingPhotoCount = this.queue.filter((q) => Boolean(q.photo_base64)).length;
 
-  const handleQrisFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (typeof ev.target?.result === 'string') {
-        if (onSaveQrisImage) {
-          onSaveQrisImage(ev.target.result);
-          triggerHaptic('success');
-          setFeedback({ type: 'success', message: 'Gambar QRIS (WebP) berhasil disimpan!' });
-        }
-      }
+    return {
+      queue: [...this.queue],
+      isSyncing: this.isSyncing,
+      hasSyncError: this.hasSyncError,
+      apiUrl: this.apiUrl,
+      team: this.team,
+      menuSheetId: this.menuSheetId,
+      isReady: this.isReady,
+      isBatterySaver: this.isBatterySaver,
+      pendingTextCount,
+      pendingPhotoCount,
     };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
+  }
 
-  const handleFieldChange = (idx: number, field: 'name' | 'price', value: string | number) => {
-    const next = [...editorProducts];
-    if (field === 'name') {
-      next[idx].name = String(value);
-      if (!next[idx].original_name) next[idx].original_name = String(value);
-    } else {
-      next[idx].price = Math.max(0, parseInt(String(value), 10) || 0);
+  public startPeriodicSync() {
+    this.stopPeriodicSync();
+    if (this.isBatterySaver) return;
+
+    // Periodic 60s background sync to flush pending queue when online without user interaction
+    this.periodicSyncTimer = setInterval(() => {
+      if (this.queue.length > 0 && this.apiUrl && navigator.onLine && !this.isSyncing) {
+        this.processQueue();
+      }
+    }, 60000);
+  }
+
+  public stopPeriodicSync() {
+    if (this.periodicSyncTimer) {
+      clearInterval(this.periodicSyncTimer);
+      this.periodicSyncTimer = null;
     }
-    setEditorProducts(next);
-  };
+  }
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    setFeedback(null);
-
-    if (sheetIdInput.trim() !== menuSheetId && onMenuSheetIdChange) {
-      onMenuSheetIdChange(sheetIdInput.trim());
-    }
-
-    if (selectedTeam !== team && onTeamChange) {
-      onTeamChange(selectedTeam);
-    }
-
-    const cleaned = editorProducts
-      .filter((p: Product) => p.name.trim() !== '')
-      .map((p: Product) => ({
-        ...p,
-        name: p.name.trim(),
-        original_name: p.original_name || p.name.trim(),
-        price: Number(p.price) || 0,
-      }));
+  public async setBatterySaver(enabled: boolean) {
+    this.isBatterySaver = enabled;
 
     try {
-      await onSave(urlInput.trim(), cleaned.length > 0 ? cleaned : products);
-      triggerHaptic('success');
-      setFeedback({ type: 'success', message: 'Pengaturan & Menu berhasil disimpan!' });
-      setTimeout(() => {
-        onClose();
-      }, 700);
-    } catch (err: unknown) {
-      triggerHaptic('warning');
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan';
-      setFeedback({ type: 'error', message: msg });
-    } finally {
-      setIsSaving(false);
+      localStorage.setItem('POS_BATTERY_SAVER', String(enabled));
+      await setConfig('batterySaver', enabled);
+    } catch (_) {}
+
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('battery-saver', enabled);
     }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/35 backdrop-blur-sm transition-opacity animate-fade-in">
-      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-[28px] shadow-[0_26px_80px_rgba(15,23,42,0.18)] max-h-[92dvh] flex flex-col border border-slate-200/80 overflow-hidden">
-        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100 bg-white/90">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <img
-              src={APP_LOGO_DATA}
-              alt="Logo AYO DANUSAN!"
-              className="w-9 h-9 rounded-xl object-contain border border-slate-200 bg-white shrink-0"
-            />
-            <div className="min-w-0">
-              <h2 className="text-base font-bold text-slate-900 leading-tight tracking-[-0.03em]">
-                Pengaturan &amp; Menu
-              </h2>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onClose();
-            }}
-            className="relative w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 touch-manipulation"
-            aria-label="Tutup pengaturan"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
-          {feedback && (
-            <div
-              className={`p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
-                feedback.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
-              }`}
-            >
-              {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              )}
-              <span>{feedback.message}</span>
-            </div>
-          )}
-
-          <div className="space-y-2 pb-3 border-b border-black/[0.06]">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5 tracking-[-0.02em]">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-[#007AFF]" />
-                <span>Divisi Penjualan</span>
-              </label>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${sheetIdInput}/edit`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-[#007AFF] transition-colors touch-manipulation"
-                  title="Buka Spreadsheet Master di Google Sheets"
-                >
-                  <span>Buka Sheet</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
-                </a>
-                <span className="text-slate-200">|</span>
-                <button
-                  type="button"
-                  onClick={handleSyncMenuClick}
-                  disabled={isSyncingMenu}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:text-[#005bb5] active:scale-95 disabled:opacity-50 touch-manipulation"
-                  title="Tarik daftar menu terbaru dari Google Sheet Master"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isSyncingMenu ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingMenu ? 'Menyinkronkan...' : 'Sinkron Sheet'}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-2xl gap-1">
-              {TEAMS.map((t) => {
-                const isActive = selectedTeam === t;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => handleSelectTeam(t)}
-                    className={`py-2 px-3 rounded-xl text-xs font-semibold transition-all duration-150 touch-manipulation ${
-                      isActive
-                        ? 'bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.08)] ring-1 ring-black/[0.04]'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {onOpenHistory && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenHistory();
-              }}
-              className="pressable w-full py-3 px-1 border-b border-black/[0.06] text-left flex items-center justify-between gap-3 transition hover:bg-black/[0.02]"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <span className="text-sm font-medium text-slate-900 truncate">
-                  Riwayat Transaksi
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-xs font-medium text-slate-400 shrink-0">
-                <ChevronRight className="w-4 h-4" />
-              </div>
-            </button>
-          )}
-
-          <div className="py-3 px-1 border-b border-black/[0.06] flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                <ZapOff className="w-4 h-4" />
-              </div>
-              <span className="text-sm font-medium text-slate-900">Mode Hemat Baterai</span>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={Boolean(isBatterySaver)}
-              onClick={() => {
-                triggerHaptic('medium');
-                if (onToggleBatterySaver) {
-                  onToggleBatterySaver(!isBatterySaver);
-                }
-              }}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isBatterySaver ? 'bg-[#007AFF]' : 'bg-slate-200'
-              }`}
-              title="Mode Hemat Baterai"
-              aria-label="Toggle Mode Hemat Baterai"
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition duration-200 ease-in-out ${
-                  isBatterySaver ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-medium text-slate-500">
-              URL Apps Script (Tujuan Transaksi)
-            </label>
-            <input
-              type="url"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-              className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
-            />
-          </div>
-
-          <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-medium text-slate-500">Gambar QRIS</label>
-            <div className="p-2.5 border border-black/[0.06] rounded-2xl bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-16 bg-white border border-black/[0.06] rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1">
-                  <img
-                    src={customQrisImage || DEFAULT_QRIS_DATA}
-                    alt="QRIS"
-                    className="w-full h-full object-contain rounded-lg"
-                  />
-                </div>
-
-                <div className="flex-1 space-y-1.5">
-                  <label className="cursor-pointer select-none pressable w-full h-8 px-3 rounded-xl bg-white hover:bg-slate-50 border border-black/[0.08] text-xs font-medium text-slate-700 flex items-center justify-center gap-2">
-                    <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
-                    <span>Ganti Gambar QRIS</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleQrisFileChange}
-                      className="sr-only"
-                    />
-                  </label>
-
-                  {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('warning');
-                        onResetQrisImage();
-                        setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
-                      }}
-                      className="pressable w-full h-7 px-2 rounded-lg text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Kembalikan ke Bawaan</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2.5 pt-1">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-xs font-bold text-slate-900 tracking-[-0.02em]">
-                  Daftar Menu &amp; Harga
-                </label>
-              </div>
-              <span className="text-xs text-slate-400 font-mono tabular-nums">
-                {editorProducts.length} item
-              </span>
-            </div>
-
-            <div className="space-y-2 max-h-[300px] overflow-y-auto px-0.5">
-              {editorProducts.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                  Belum ada menu untuk divisi ini. Klik tombol <strong>Sinkron Sheet</strong> di atas atau tambah menu custom di bawah.
-                </div>
-              ) : (
-                editorProducts.map((item: Product, idx: number) => {
-                  const isCustom = Boolean(item.is_custom);
-                  return (
-                    <div
-                      key={item.id || idx}
-                      className="grid grid-cols-[1fr_96px_36px] gap-1.5 items-center w-full"
-                    >
-                      <div className="relative min-w-0 flex items-center">
-                        <input
-                          type="text"
-                          value={item.name}
-                          readOnly={!isCustom}
-                          onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
-                          placeholder="Nama Barang"
-                          className={`min-w-0 w-full h-9 pl-2.5 pr-14 rounded-xl border text-xs font-medium text-slate-800 transition focus:outline-none ${
-                            !isCustom
-                              ? 'bg-slate-100/70 border-slate-200 cursor-default select-none'
-                              : 'bg-white border-black/[0.08] focus:ring-1 focus:ring-[#007AFF]'
-                          }`}
-                        />
-                        <span
-                          className={`absolute right-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 pointer-events-none ${
-                            !isCustom ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {isCustom ? 'Custom' : 'Sheet'}
-                        </span>
-                      </div>
-
-                      <div className="relative min-w-0 w-[96px] shrink-0">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
-                          Rp
-                        </span>
-                        <input
-                          type="number"
-                          value={item.price}
-                          onChange={(e) => handleFieldChange(idx, 'price', e.target.value)}
-                          placeholder="Harga"
-                          className="h-9 pl-7 pr-2 w-full rounded-xl bg-slate-50 border border-black/[0.08] text-xs font-medium text-right text-slate-800 font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
-                        />
-                      </div>
-
-                      {isCustom ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRow(idx)}
-                          className="pressable w-8 h-9 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90"
-                          title="Hapus Menu Custom"
-                          aria-label="Hapus Menu Custom"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <div
-                          className="w-8 h-9 flex items-center justify-center text-slate-300"
-                          title="Menu bawaan Sheet Master (tidak dapat dihapus satuan, nama dikunci)"
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
 
-            <button
-              type="button"
-              onClick={handleAddCustomRow}
-              className="pressable w-full h-9 rounded-xl border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-[#007AFF] text-xs font-medium flex items-center justify-center gap-2 transition"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tambah Menu Custom</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/[0.06] flex items-center justify-end shrink-0">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="pressable w-full h-11 rounded-2xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-[0_10px_20px_rgba(0,122,255,0.2)] transition disabled:opacity-50"
-          >
-            <Save className="w-3.5 h-3.5" />
-            <span>{isSaving ? 'Menyimpan...' : 'Simpan & Terapkan'}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-n
+    if (enabled) {
+      this.stopPeriodicSync();
+      if (this.retryTimer) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = null;
+      }
+    } else {
+      this.startPeriodicSync();
+      if (this.queue.length > 0 && navigator.onLine) {
+        this.processQueue();
+      }
+    }
+
+    this.notify();
+  }
+
+  public subscribe(fn: Subscriber): () => void {
+    this.subscribers.add(fn);
+    fn(this.getState());
+    return () => {
+      this.subscribers.delete(fn);
+    };
+  }
+
+  private notify() {
+    const state = this.getState();
+    this.subscribers.forEach((fn) => fn(state));
+  }
+
+  public async setApiUrl(url: string) {
+    this.apiUrl = url.trim();
+    try {
+      localStorage.setItem('POS_API_URL', this.apiUrl);
+      await setConfig('apiUrl', this.apiUrl);
+    } catch (_) {}
+    this.notify();
+    if (this.apiUrl && this.queue.length > 0 && navigator.onLine) {
+      this.processQueue();
+    }
+  }
+
+  public setTeam(team: TeamDivision) {
+    this.team = team;
+    try {
+      localStorage.setItem('POS_TEAM', team);
+    } catch (_) {}
+    setConfig('team', team).catch(() => {});
+    this.notify();
+  }
+
+  public setMenuSheetId(sheetInput: string) {
+    const clean = sheetInput.trim() || DEFAULT_MENU_SHEET_ID;
+    this.menuSheetId = clean;
+    try {
+      localStorage.setItem('POS_MENU_SHEET', clean);
+    } catch (_) {}
+    setConfig('menuSheet', clean).catch(() => {});
+    this.notify();
+  }
+
+  public async enqueue(order: QueuedOrder): Promise<void> {
+    // 1. Priority Insertion: Text-only transactions (!order.photo_base64) are placed
+    // ahead of any pending photo-bearing transactions in the queue.
+    if (!order.photo_base64) {
+      const lastTextIdx = this.queue.reduce(
+        (lastIdx, item, idx) => (!item.photo_base64 ? idx : lastIdx),
+        -1
+      );
+      if (lastTextIdx === -1) {
+        // Place text order at the front ahead of photo orders
+        this.queue = [order, ...this.queue];
+      } else {
+        // Insert right after last text order, ahead of photo orders
+        this.queue = [
+          ...this.queue.slice(0, lastTextIdx + 1),
+          order,
+          ...this.queue.slice(lastTextIdx + 1),
+        ];
+      }
+    } else {
+      // Photo orders are queued after text orders
+      this.queue = [...this.queue, order];
+    }
+    this.notify();
+
+    // 2. Asynchronous write-through to IndexedDB disk (Crash-Proof)
+    try {
+      await saveQueueOrder(order);
+      try {
+        localStorage.setItem(
+          'POS_QUEUE_META',
+          JSON.stringify(this.queue.map((q) => ({ id: q.order_id, ts: q.timestamp })))
+        );
+      } catch (_) {}
+    } catch (err) {
+      console.warn('Failed to persist queued order to IndexedDB:', err);
+    }
+
+    // 3. Trigger immediate sync (faster 10ms dispatch for high-priority text orders)
+    if (!this.isBatterySaver) {
+      const delay = !order.photo_base64 ? 10 : 100;
+      setTimeout(() => {
+        this.processQueue();
+      }, delay);
+    }
+  }
+
+  public async processQueue(): Promise<boolean> {
+    if (!this.apiUrl || !this.queue.length || this.isSyncing) {
+      return false;
+    }
+
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
+    this.isSyncing = true;
+    this.hasSyncError = false;
+    this.notify();
+
+    let syncedCount = 0;
+
+    // Process all queue items with priority execution:
+    // Text-only transactions are always prioritized first before photo uploads
+    while (this.queue.length > 0) {
+      // Priority Selection: find first text-only transaction in queue
+      const textItemIdx = this.queue.findIndex((item) => !item.photo_base64);
+      const targetIdx = textItemIdx !== -1 ? textItemIdx : 0;
+      const itemToSync = this.queue[targetIdx];
+
+      const isTextOnly = !itemToSync.photo_base64;
+      const controller = new AbortController();
+      const timeoutMs = isTextOnly ? ORDER_SYNC_TIMEOUT_FAST_MS : ORDER_SYNC_TIMEOUT_MS;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const res = await fetch(this.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(itemToSync),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const data = await res.json();
+        if (data.status === 'ok') {
+          // Remove synced item from queue by order_id
+          this.queue = this.queue.filter((q) => q.order_id !== itemToSync.order_id);
+          syncedCount++;
+          this.retryAttempt = 0; // Reset backoff on successful transfer
+
+          // Remove from persistent IndexedDB store
+          await removeQueueOrder(itemToSync.order_id);
+          markOrderSyncedLocally(itemToSync.order_id);
+          this.notify();
+        } else {
+          throw new Error('Apps Script returned non-ok status');
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        console.warn('Sync queue error (item:', itemToSync.order_id, 'isText:', isTextOnly, '):', err);
+        this.hasSyncError = true;
+        this.isSyncing = false;
+        this.notify();
+
+        // Priority Resilience: If a photo upload encounters an error/timeout and there are still text-only orders pending,
+        // move the failed photo item to the end of the queue so it doesn't block remaining text orders!
+        if (!isTextOnly && this.queue.some((q) => !q.photo_base64)) {
+          console.info('Photo upload delayed, prioritizing remaining text transactions...');
+          this.queue = [
+            ...this.queue.filter((q) => q.order_id !== itemToSync.order_id),
+            itemToSync,
+          ];
+          this.notify();
+          // Resume processing remaining text items immediately
+          setTimeout(() => {
+            this.processQueue();
+          }, 50);
+          return false;
+        }
+
+        // Calculate exponential backoff with jitter for low-speed connections
+        this.retryAttempt = Math.min(this.retryAttempt + 1, 5);
+        const backoffMs = Math.min(30000, Math.round(Math.pow(1.8, this.retryAttempt) * 1500 + Math.random() * 1000));
+
+        // If still online and NOT in battery saver mode, schedule gentle auto-retry
+        if (navigator.onLine && !this.isBatterySaver && !this.retryTimer && this.queue.length > 0) {
+          this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            if (this.queue.length > 0 && navigator.onLine && !this.isBatterySaver) {
+              this.processQueue();
+            }
+          }, backoffMs);
+        }
+        return false;
+      }
+    }
+
+    this.isSyncing = false;
+    this.hasSyncError = false;
+    this.retryAttempt = 0;
+    this.notify();
+
+    // Dispatch custom event for user-facing toast notification
+    if (syncedCount > 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('pos-sync-success', {
+          detail: { count: syncedCount },
+        })
+      );
+    }
+
+    return true;
+  }
+
+  public async saveProductsToSheet(url: string, products: Product[]): Promise<Product[] | null> {
+    if (!url) return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'saveProducts', products }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const data = await res.json();
+      if (data.status === 'ok' && Array.isArray(data.products) && data.products.length > 0) {
+        return data.products.map((p: Product) => ({ ...p, original_name: p.name }));
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn('Save products to sheet error:', err);
+    }
+    return null;
+  }
+
+  public async fetchHistoryFromSheet(urlOverride?: string): Promise<SalesHistoryItem[] | null> {
+    const url = urlOverride || this.apiUrl;
+    if (!url) return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      let rawOrders: any[] = [];
+      try {
+        const res = await fetch(`${url}?action=getHistory`, { signal: controller.signal });
+        const data = await res.json();
+        if (Array.isArray(data)) rawOrders = data;
+        else if (Array.isArray(data.orders)) rawOrders = data.orders;
+        else if (Array.isArray(data.history)) rawOrders = data.history;
+        else if (Array.isArray(data.transactions)) rawOrders = data.transactions;
+        else if (Array.isArray(data.records)) rawOrders = data.records;
+        else if (Array.isArray(data.data)) rawOrders = data.data;
+      } catch (_) {}
+
+      if (!rawOrders || rawOrders.length === 0) {
+        try {
+          const res2 = await fetch(`${url}?action=getOrders`, { signal: controller.signal });
+          const data2 = await res2.json();
+          if (Array.isArray(data2)) rawOrders = data2;
+          else if (Array.isArray(data2.orders)) rawOrders = data2.orders;
+          else if (Array.isArray(data2.history)) rawOrders = data2.history;
+          else if (Array.isArray(data2.transactions)) rawOrders = data2.transactions;
+        } catch (_) {}
+      }
+
+      clearTimeout(timeoutId);
+
+      if (rawOrders && rawOrders.length > 0) {
+        return rawOrders.map((row: any, idx: number) => {
+          const order_id = String(row.order_id || row.orderId || row.id || `ORD-${idx + 1}`);
+          const timestamp = String(row.timestamp || row.date || row.waktu || new Date().toISOString());
+          const payment_method: 'QRIS' | 'Cash' =
+            String(row.payment_method || row.paymentMethod || row.metode || 'QRIS').toUpperCase().includes('CASH') ||
+            String(row.payment_method || '').toUpperCase().includes('TUNAI')
+              ? 'Cash'
+              : 'QRIS';
+          const discount_total = Number(row.discount_total || row.discount || row.diskon || 0);
+
+          let items: OrderItem[] = [];
+          if (Array.isArray(row.items)) {
+            items = row.items.map((it: any) => ({
+              name: String(it.name || it.nama || ''),
+              qty: Number(it.qty || it.quantity || it.jumlah || 1),
+              unit_price: Number(it.unit_price || it.price || it.harga || 0),
+            }));
+          } else if (typeof row.items === 'string') {
+            try {
+              const parsed = JSON.parse(row.items);
+              if (Array.isArray(parsed)) {
+                items = parsed.map((it: any) => ({
+                  name: String(it.name || it.nama || ''),
+                  qty: Number(it.qty || it.quantity || it.jumlah || 1),
+                  unit_price: Number(it.unit_price || it.price || it.harga || 0),
+                }));
+              }
+            } catch (_) {
+              items = [{ name: row.items, qty: 1, unit_price: Number(row.gross_total || row.total || 0) }];
+            }
+          }
+
+          const gross_total = Number(
+            row.gross_total || row.subtotal || items.reduce((sum, it) => sum + it.qty * it.unit_price, 0)
+          );
+          const net_total = Number(row.net_total || row.total || Math.max(0, gross_total - discount_total));
+          const items_count = Number(row.items_count || items.reduce((sum, it) => sum + it.qty, 0));
+
+          return {
+            order_id,
+            timestamp,
+            payment_method,
+            discount_total,
+            gross_total,
+            net_total,
+            items_count,
+            items,
+            photo_url: row.photo_url || row.photoUrl || row.drive_url || '',
+            photo_base64: row.photo_base64 || row.photoBase64 || '',
+            is_local_pending: false,
+          };
+        });
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn('Fetch history from sheet error:', err);
+    }
+    return null;
+  }
+
+  /**
+   * Parses CSV text exported from Google Sheets matrix format into structured Product list
+   */
+  public parseMenuFromCsv(
+    csvText: string,
+    targetTeam: TeamDivision,
+    existingProducts: Product[] = [],
+    preserveCustom = true
+  ): Product[] {
+    const defaultColMap: Record<TeamDivision, number> = {
+      'Team A': 1,
+      'Team B': 2,
+      'Team C': 3,
+    };
+    let colIdx = defaultColMap[targetTeam] ?? 1;
+
+    const rows = csvText
+      .split(/\r?\n/)
+      .map((line) =>
+        line
+          .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+          .map((cell) => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
+      );
+
+    // Dynamically detect column index from the header row containing team names
+    const headerRowIdx = rows.findIndex((r) => {
+      const matchIdx = r.findIndex(
+        (cell) => cell.toUpperCase().replace(/\s+/g, '') === targetTeam.toUpperCase().replace(/\s+/g, '')
+      );
+      if (matchIdx !== -1) {
+        colIdx = matchIdx;
+        return true;
+      }
+      return r.some((cell) => cell.toUpperCase().includes('TEAM A'));
+    });
+
+    const dataRows = rows.slice(headerRowIdx >= 0 ? headerRowIdx + 1 : 2);
+
+    // Preserve previously customized prices in phone memory so they are not reset to 5000
+    const priceMemory = new Map<string, number>();
+    existingProducts.forEach((p) => {
+      priceMemory.set(p.name.toLowerCase().trim(), p.price);
+    });
+
+    const toTitleCase = (str: string) =>
+      str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+
+    const sheetProducts: Product[] = [];
+    const seenNames = new Set<string>();
+
+    for (const row of dataRows) {
+      const rawCell = (row[colIdx] || '').trim();
+      if (!rawCell) continue;
+
+      // Support formats like "bomboloni" or "risol - 6000" / "risol: 6000"
+      const priceMatch = rawCell.match(/^(.*?)\s*[:\-]\s*(?:rp\.?\s*)?(\d+)\s*$/i);
+      const rawName = priceMatch ? priceMatch[1].trim() : rawCell;
+      if (!rawName) continue;
+
+      const cleanName = toTitleCase(rawName);
+      const lowerName = cleanName.toLowerCase();
+      if (seenNames.has(lowerName)) continue;
+      seenNames.add(lowerName);
+
+      const slug = lowerName.replace(/[^a-z0-9]+/g, '_');
+      const id = `${targetTeam.toLowerCase().replace(/\s+/g, '')}_${slug}`;
+
+      const inlinePrice = priceMatch ? Number(priceMatch[2]) : 0;
+      const rememberedPrice = priceMemory.get(lowerName) || 5000;
+
+      sheetProducts.push({
+        id,
+        name: cleanName,
+        original_name: cleanName,
+        price: inlinePrice > 0 ? inlinePrice : rememberedPrice,
+        is_custom: false,
+      });
+    }
+
+    // Preserve on-the-fly custom menu items if on the same division
+    if (preserveCustom) {
+      const customProducts = existingProducts.filter(
+        (p) => p.is_custom && p.name.trim() !== '' && !seenNames.has(p.name.toLowerCase().trim())
+      );
+      return [...sheetProducts, ...customProducts];
+    }
+
+    return sheetProducts;
+  }
+
+  /**
+   * Fetches the central matrix menu from Google Sheet via CSV gviz endpoint
+   * with secondary export fallback and smartly merges sheet items with active custom items.
+   */
+  public async fetchMenuFromCentralSheet(
+    teamOverride?: TeamDivision,
+    sheetInputOverride?: string,
+    existingProducts: Product[] = [],
+    preserveCustom = true
+  ): Promise<Product[]> {
+    const targetTeam = teamOverride || this.team;
+    const rawSheet = (sheetInputOverride ?? this.menuSheetId).trim() || DEFAULT_MENU_SHEET_ID;
+    const match = rawSheet.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    const sheetId = match ? match[1] : rawSheet;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      // Primary: Google Visualization CSV endpoint (fast, zero quota)
+      let csvText = '';
+      try {
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&t=${Date.now()}`;
+        const res = await fetch(gvizUrl, { signal: controller.signal });
+        if (res.ok) {
+          csvText = await res.text();
+        }
+      } catch (_) {}
+
+      // Secondary fallback: Direct Google Sheets export CSV endpoint
+      if (!csvText) {
+        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&t=${Date.now()}`;
+        const res = await fetch(exportUrl, { signal: controller.signal });
+        if (!res.ok) throw new Error('Gagal mengakses Google Sheet Menu Pusat');
+        csvText = await res.text();
+      }
+
+      clearTimeout(timeoutId);
+      return this.parseMenuFromCsv(csvText, targetTeam, existingProducts, preserveCustom);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+}
+
+export const syncEngine = new SyncEngineService();

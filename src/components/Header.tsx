@@ -1,137 +1,213 @@
-@import "tailwindcss";
+import React from 'react';
+import {
+  RotateCcw,
+  Menu,
+  Download,
+  RefreshCw,
+  ZapOff,
+  Check,
+} from 'lucide-react';
+import { triggerHaptic } from '../utils/haptics';
+import { TeamDivision } from '../types';
 
-@layer base {
-  :root {
-    --bg-system: #f3f4f6;
-    --bg-surface: rgba(255, 255, 255, 0.76);
-    --bg-elevated: #ffffff;
-    --bg-muted: #f5f7fb;
-    --bg-soft: #eef3ff;
-    --border-soft: rgba(15, 23, 42, 0.08);
-    --text-primary: #111827;
-    --text-secondary: #5f6b7a;
-    --text-tertiary: #8b93a7;
-    --brand-blue: #007aff;
-    --brand-blue-strong: #005fce;
-    --brand-green: #34c759;
-    --brand-orange: #ff9500;
-    --brand-red: #ff3b30;
+interface HeaderProps {
+  queueLength: number;
+  pendingTextCount?: number;
+  pendingPhotoCount?: number;
+  isSyncing: boolean;
+  apiUrl: string;
+  hasSyncError: boolean;
+  isInstallable: boolean;
+  isOnline?: boolean;
+  isBatterySaver?: boolean;
+  team?: TeamDivision;
+  onSyncClick: () => void;
+  onResetCart: () => void;
+  onOpenSettings: () => void;
+  onOpenPWAInfo: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  queueLength,
+  pendingTextCount = 0,
+  pendingPhotoCount = 0,
+  isSyncing,
+  apiUrl,
+  hasSyncError,
+  isInstallable,
+  isOnline = true,
+  isBatterySaver = false,
+  team = 'Team A',
+  onSyncClick,
+  onResetCart,
+  onOpenSettings,
+  onOpenPWAInfo,
+}) => {
+  let syncLabel = 'Tersinkron';
+  let dotColor = 'bg-slate-400';
+  const isFullySynced = isOnline && Boolean(apiUrl) && !hasSyncError && !isSyncing && queueLength === 0;
+
+  if (!isOnline) {
+    if (queueLength > 0) {
+      syncLabel = `Offline (${queueLength})`;
+      dotColor = 'bg-slate-500';
+    } else {
+      syncLabel = 'Offline';
+      dotColor = 'bg-slate-400';
+    }
+  } else if (!apiUrl) {
+    syncLabel = queueLength > 0 ? `Atur URL (${queueLength})` : 'Atur URL';
+    dotColor = 'bg-rose-500';
+  } else if (hasSyncError) {
+    syncLabel = `Coba Lagi (${queueLength})`;
+    dotColor = 'bg-rose-500';
+  } else if (isSyncing) {
+    if (pendingTextCount > 0) {
+      syncLabel = `Sync Teks (${pendingTextCount})...`;
+    } else if (pendingPhotoCount > 0) {
+      syncLabel = `Upload Foto (${pendingPhotoCount})...`;
+    } else {
+      syncLabel = 'Menyinkronkan...';
+    }
+    dotColor = 'bg-[#007AFF]';
+  } else if (queueLength > 0) {
+    if (pendingTextCount === 0 && pendingPhotoCount > 0) {
+      syncLabel = `Upload Foto (${pendingPhotoCount})`;
+      dotColor = 'bg-slate-400';
+    } else {
+      syncLabel = `Antrean (${queueLength})`;
+      dotColor = 'bg-[#007AFF]';
+    }
   }
 
-  * {
-    box-sizing: border-box;
-  }
+  return (
+    <header className="sticky top-0 left-0 right-0 z-30 shrink-0 bg-white border-b border-black/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.02)] pt-[env(safe-area-inset-top,0px)]">
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 h-16 flex items-center justify-between gap-2">
+        {/* Left: Clickable AYO DANUSAN! logotext + Flat-out Text Division */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenPWAInfo();
+            }}
+            className="pressable text-left group flex items-center min-h-[44px] focus:outline-none shrink-0 touch-manipulation"
+            title="Ketuk untuk melihat Panduan Pasang PWA"
+            aria-label="Buka Panduan Pasang PWA"
+          >
+            <span className="text-base sm:text-xl font-bold tracking-tight text-slate-900 select-none group-hover:text-[#007AFF] transition-colors whitespace-nowrap">
+              AYO DANUSAN!
+            </span>
+          </button>
 
-  html, body, #root {
-    height: 100%;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-  }
+          {team && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenSettings();
+              }}
+              className="pressable min-w-0 inline-flex items-center gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] transition-colors touch-manipulation text-slate-700 hover:text-slate-900"
+              title={`Divisi: ${team}. Ketuk untuk ganti divisi atau sinkron menu.`}
+              aria-label={`Divisi aktif ${team}. Buka pengaturan.`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#007AFF] shrink-0" />
+              <span className="text-xs sm:text-sm font-semibold tracking-tight whitespace-nowrap">
+                {team}
+              </span>
+            </button>
+          )}
+        </div>
 
-  body {
-    background:
-      radial-gradient(circle at top, rgba(0, 122, 255, 0.05), transparent 35%),
-      linear-gradient(180deg, #f5f6f9 0%, #eef2f7 100%);
-    color: var(--text-primary);
-    line-height: 1.45;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
-    letter-spacing: -0.01em;
-  }
+        {/* Center: Sync Status & Mode Hemat Baterai (Compressed for mobile) */}
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onSyncClick();
+            }}
+            className="pressable min-w-0 inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] transition-colors touch-manipulation"
+            aria-label="Status Sinkronisasi"
+            title={queueLength > 0 ? `Antrean: ${pendingTextCount} teks, ${pendingPhotoCount} foto. Klik untuk sinkronkan.` : 'Semua transaksi tersinkron'}
+          >
+            {isFullySynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5] shrink-0" />
+                <span className="hidden sm:inline text-xs font-medium text-slate-600 truncate tracking-tight">
+                  {syncLabel}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
+                <span className="text-xs font-medium text-slate-600 truncate tracking-tight max-w-[85px] xs:max-w-[120px] sm:max-w-none">
+                  {syncLabel}
+                </span>
+                {isSyncing && (
+                  <RefreshCw className="w-3 h-3 text-[#007AFF] animate-spin shrink-0" />
+                )}
+              </>
+            )}
+          </button>
 
-  h1, h2, h3, h4, h5, h6 {
-    line-height: 1.15;
-    letter-spacing: -0.03em;
-    margin: 0;
-    font-weight: 700;
-  }
+          {isBatterySaver && (
+            <span
+              className="inline-flex items-center text-amber-500 p-1 rounded-md shrink-0 transition-transform active:scale-95"
+              title="Mode Hemat Baterai aktif"
+              aria-label="Mode Hemat Baterai aktif"
+            >
+              <ZapOff className="w-3.5 h-3.5 stroke-[2.2]" />
+            </span>
+          )}
+        </div>
 
-  p, li {
-    line-height: 1.45;
-    margin: 0;
-  }
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {isInstallable && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenPWAInfo();
+              }}
+              className="pressable inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#007AFF] hover:bg-blue-50/60 transition-colors touch-manipulation"
+              title="Pasang aplikasi ke Layar Utama HP"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline sm:inline">Pasang</span>
+            </button>
+          )}
 
-  button, input, select, textarea {
-    line-height: 1.3;
-    font: inherit;
-  }
-}
+          {/* Reset Keranjang */}
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('warning');
+              onResetCart();
+            }}
+            className="pressable relative w-8 h-8 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors touch-manipulation before:content-[''] before:absolute before:-inset-2 before:z-10"
+            title="Reset Keranjang"
+            aria-label="Reset Keranjang"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
 
-.num,
-.tabular-nums,
-[data-tabular-nums="true"],
-input[type="number"] {
-  font-variant-numeric: tabular-nums;
-  -webkit-font-feature-settings: "tnum" 1;
-  font-feature-settings: "tnum" 1;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-}
-
-.pressable {
-  transition: transform 90ms cubic-bezier(0.2, 0, 0, 1), filter 90ms ease, box-shadow 150ms ease, background-color 150ms ease;
-  touch-action: manipulation;
-}
-
-.pressable:active {
-  transform: scale(0.98);
-  filter: brightness(0.96);
-}
-
-.soft-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  border: 1px solid var(--border-soft);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
-}
-
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
-  border-radius: 9999px;
-}
-
-html.battery-saver *,
-html.battery-saver *::before,
-html.battery-saver *::after {
-  transition-duration: 0.001ms !important;
-}
-
-html.battery-saver .animate-pulse,
-html.battery-saver .animate-bounce,
-html.battery-saver .animate-fade-in {
-  animation: none !important;
-}
-
-html.battery-saver .backdrop-blur-xs,
-html.battery-saver .backdrop-blur-sm,
-html.battery-saver .backdrop-blur-md {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-html.battery-saver .pressable:active {
-  transform: none !important;
-  filter: brightness(0.92);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
+          {/* Pengaturan & Menu */}
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenSettings();
+            }}
+            className="pressable relative w-8 h-8 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors touch-manipulation before:content-[''] before:absolute before:-inset-2 before:z-10"
+            title="Menu & Pengaturan"
+            aria-label="Menu & Pengaturan"
+          >
+            <Menu className="w-4 h-4 stroke-[2.2]" />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+};
