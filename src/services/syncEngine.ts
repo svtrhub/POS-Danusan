@@ -1,4 +1,4 @@
-import { QueuedOrder, Product, SalesHistoryItem, OrderItem } from '../types';
+import { QueuedOrder, Product, SalesHistoryItem, OrderItem, TeamDivision } from '../types';
 import { markOrderSyncedLocally } from '../utils/historyStorage';
 import {
   saveQueueOrder,
@@ -9,11 +9,15 @@ import {
   migrateFromLocalStorage,
 } from './indexedDBStorage';
 
+export const DEFAULT_MENU_SHEET_ID = '1r6az25v1wPH5qcKc9YyoHY9qp4ejTmAVFsgv3YfhUsI';
+
 export interface SyncEngineState {
   queue: QueuedOrder[];
   isSyncing: boolean;
   hasSyncError: boolean;
   apiUrl: string;
+  team: TeamDivision;
+  menuSheetId: string;
   isReady: boolean;
   isBatterySaver: boolean;
   pendingTextCount: number;
@@ -32,6 +36,8 @@ class SyncEngineService {
   private isSyncing = false;
   private hasSyncError = false;
   private apiUrl = '';
+  private team: TeamDivision = 'Team A';
+  private menuSheetId = DEFAULT_MENU_SHEET_ID;
   private isReady = false;
   private isBatterySaver = false;
   private periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -88,13 +94,39 @@ class SyncEngineService {
         }
       }
 
-      // 4. Rehydrate full crash-proof offline queue from IndexedDB with Priority Sorting
+      // 4. Load Team Division preference (Team A / Team B / Team C)
+      try {
+        const storedTeam = localStorage.getItem('POS_TEAM') as TeamDivision | null;
+        if (storedTeam === 'Team A' || storedTeam === 'Team B' || storedTeam === 'Team C') {
+          this.team = storedTeam;
+        } else {
+          const idbTeam = await getConfig<TeamDivision>('team');
+          if (idbTeam === 'Team A' || idbTeam === 'Team B' || idbTeam === 'Team C') {
+            this.team = idbTeam;
+          }
+        }
+      } catch (_) {}
+
+      // 5. Load Menu Sheet ID / URL
+      try {
+        const storedSheet = localStorage.getItem('POS_MENU_SHEET');
+        if (storedSheet) {
+          this.menuSheetId = storedSheet;
+        } else {
+          const idbSheet = await getConfig<string>('menuSheet');
+          if (idbSheet) {
+            this.menuSheetId = idbSheet;
+          }
+        }
+      } catch (_) {}
+
+      // 6. Rehydrate full crash-proof offline queue from IndexedDB with Priority Sorting
       const diskQueue = await getAllQueueOrders();
       this.queue = this.sortQueueByPriority(diskQueue);
       this.isReady = true;
       this.notify();
 
-      // 5. Periodic background sync management (disabled when Battery Saver is active)
+      // 7. Periodic background sync management (disabled when Battery Saver is active)
       if (!this.isBatterySaver) {
         this.startPeriodicSync();
         if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
@@ -157,6 +189,8 @@ class SyncEngineService {
       isSyncing: this.isSyncing,
       hasSyncError: this.hasSyncError,
       apiUrl: this.apiUrl,
+      team: this.team,
+      menuSheetId: this.menuSheetId,
       isReady: this.isReady,
       isBatterySaver: this.isBatterySaver,
       pendingTextCount,
@@ -234,6 +268,25 @@ class SyncEngineService {
     if (this.apiUrl && this.queue.length > 0 && navigator.onLine) {
       this.processQueue();
     }
+  }
+
+  public setTeam(team: TeamDivision) {
+    this.team = team;
+    try {
+      localStorage.setItem('POS_TEAM', team);
+    } catch (_) {}
+    setConfig('team', team).catch(() => {});
+    this.notify();
+  }
+
+  public setMenuSheetId(sheetInput: string) {
+    const clean = sheetInput.trim() || DEFAULT_MENU_SHEET_ID;
+    this.menuSheetId = clean;
+    try {
+      localStorage.setItem('POS_MENU_SHEET', clean);
+    } catch (_) {}
+    setConfig('menuSheet', clean).catch(() => {});
+    this.notify();
   }
 
   public async enqueue(order: QueuedOrder): Promise<void> {
@@ -508,6 +561,141 @@ class SyncEngineService {
       console.warn('Fetch history from sheet error:', err);
     }
     return null;
+  }
+
+  /**
+   * Parses CSV text exported from Google Sheets matrix format into structured Product list
+   */
+  public parseMenuFromCsv(
+    csvText: string,
+    targetTeam: TeamDivision,
+    existingProducts: Product[] = [],
+    preserveCustom = true
+  ): Product[] {
+    const defaultColMap: Record<TeamDivision, number> = {
+      'Team A': 1,
+      'Team B': 2,
+      'Team C': 3,
+    };
+    let colIdx = defaultColMap[targetTeam] ?? 1;
+
+    const rows = csvText
+      .split(/\r?\n/)
+      .map((line) =>
+        line
+          .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+          .map((cell) => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
+      );
+
+    // Dynamically detect column index from the header row containing team names
+    const headerRowIdx = rows.findIndex((r) => {
+      const matchIdx = r.findIndex(
+        (cell) => cell.toUpperCase().replace(/\s+/g, '') === targetTeam.toUpperCase().replace(/\s+/g, '')
+      );
+      if (matchIdx !== -1) {
+        colIdx = matchIdx;
+        return true;
+      }
+      return r.some((cell) => cell.toUpperCase().includes('TEAM A'));
+    });
+
+    const dataRows = rows.slice(headerRowIdx >= 0 ? headerRowIdx + 1 : 2);
+
+    // Preserve previously customized prices in phone memory so they are not reset to 5000
+    const priceMemory = new Map<string, number>();
+    existingProducts.forEach((p) => {
+      priceMemory.set(p.name.toLowerCase().trim(), p.price);
+    });
+
+    const toTitleCase = (str: string) =>
+      str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+
+    const sheetProducts: Product[] = [];
+    const seenNames = new Set<string>();
+
+    for (const row of dataRows) {
+      const rawCell = (row[colIdx] || '').trim();
+      if (!rawCell) continue;
+
+      // Support formats like "bomboloni" or "risol - 6000" / "risol: 6000"
+      const priceMatch = rawCell.match(/^(.*?)\s*[:\-]\s*(?:rp\.?\s*)?(\d+)\s*$/i);
+      const rawName = priceMatch ? priceMatch[1].trim() : rawCell;
+      if (!rawName) continue;
+
+      const cleanName = toTitleCase(rawName);
+      const lowerName = cleanName.toLowerCase();
+      if (seenNames.has(lowerName)) continue;
+      seenNames.add(lowerName);
+
+      const slug = lowerName.replace(/[^a-z0-9]+/g, '_');
+      const id = `${targetTeam.toLowerCase().replace(/\s+/g, '')}_${slug}`;
+
+      const inlinePrice = priceMatch ? Number(priceMatch[2]) : 0;
+      const rememberedPrice = priceMemory.get(lowerName) || 5000;
+
+      sheetProducts.push({
+        id,
+        name: cleanName,
+        original_name: cleanName,
+        price: inlinePrice > 0 ? inlinePrice : rememberedPrice,
+        is_custom: false,
+      });
+    }
+
+    // Preserve on-the-fly custom menu items if on the same division
+    if (preserveCustom) {
+      const customProducts = existingProducts.filter(
+        (p) => p.is_custom && p.name.trim() !== '' && !seenNames.has(p.name.toLowerCase().trim())
+      );
+      return [...sheetProducts, ...customProducts];
+    }
+
+    return sheetProducts;
+  }
+
+  /**
+   * Fetches the central matrix menu from Google Sheet via CSV gviz endpoint
+   * with secondary export fallback and smartly merges sheet items with active custom items.
+   */
+  public async fetchMenuFromCentralSheet(
+    teamOverride?: TeamDivision,
+    sheetInputOverride?: string,
+    existingProducts: Product[] = [],
+    preserveCustom = true
+  ): Promise<Product[]> {
+    const targetTeam = teamOverride || this.team;
+    const rawSheet = (sheetInputOverride ?? this.menuSheetId).trim() || DEFAULT_MENU_SHEET_ID;
+    const match = rawSheet.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    const sheetId = match ? match[1] : rawSheet;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      // Primary: Google Visualization CSV endpoint (fast, zero quota)
+      let csvText = '';
+      try {
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&t=${Date.now()}`;
+        const res = await fetch(gvizUrl, { signal: controller.signal });
+        if (res.ok) {
+          csvText = await res.text();
+        }
+      } catch (_) {}
+
+      // Secondary fallback: Direct Google Sheets export CSV endpoint
+      if (!csvText) {
+        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&t=${Date.now()}`;
+        const res = await fetch(exportUrl, { signal: controller.signal });
+        if (!res.ok) throw new Error('Gagal mengakses Google Sheet Menu Pusat');
+        csvText = await res.text();
+      }
+
+      clearTimeout(timeoutId);
+      return this.parseMenuFromCsv(csvText, targetTeam, existingProducts, preserveCustom);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
   }
 }
 

@@ -1,8 +1,11 @@
+export type TeamDivision = 'Team A' | 'Team B' | 'Team C';
+
 export interface Product {
   id: string;
   name: string;
   original_name?: string;
   price: number;
+  is_custom?: boolean;
 }
 
 export interface OrderItem {

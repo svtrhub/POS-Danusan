@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 
-import { Product } from './types';
+import { Product, TeamDivision } from './types';
 import { Header } from './components/Header';
 import { ProductCard } from './components/ProductCard';
 import { PaymentDock } from './components/PaymentDock';
@@ -25,13 +25,14 @@ import { BlobRegistry } from './utils/blobRegistry';
 import { formatBytes } from './utils/media';
 
 const DEFAULT_MENU: Product[] = [
-  { id: 'p1', name: 'Bomboloni', original_name: 'Bomboloni', price: 5000 },
-  { id: 'p2', name: 'Risol', original_name: 'Risol', price: 6000 },
-  { id: 'p3', name: 'Es Teh', original_name: 'Es Teh', price: 5000 },
-  { id: 'p4', name: 'Tahu Bakso', original_name: 'Tahu Bakso', price: 5000 },
+  { id: 'teama_gabin', name: 'Gabin', original_name: 'Gabin', price: 5000, is_custom: false },
+  { id: 'teama_bomboloni_premium', name: 'Bomboloni Premium', original_name: 'Bomboloni Premium', price: 5000, is_custom: false },
+  { id: 'teama_jasuke', name: 'Jasuke', original_name: 'Jasuke', price: 5000, is_custom: false },
+  { id: 'teama_es_teh', name: 'Es Teh', original_name: 'Es Teh', price: 5000, is_custom: false },
+  { id: 'teama_thai_tea', name: 'Thai Tea', original_name: 'Thai Tea', price: 5000, is_custom: false },
 ];
 
-const MENU_VERSION = 'v2_bomboloni';
+const MENU_VERSION = 'v3_master_gabin';
 
 function loadSafeMenu(): Product[] {
   try {
@@ -119,20 +120,76 @@ export default function App() {
     }, 2500);
   }, []);
 
-  // Rehydrate catalog from IndexedDB disk on mount
+  // Rehydrate catalog from IndexedDB disk on mount and background-sync with sheet if online
   useEffect(() => {
+    let isMounted = true;
     getCatalog()
-      .then((dbCatalog) => {
-        if (dbCatalog && dbCatalog.length > 0) {
-          setProducts(dbCatalog);
-        } else {
-          saveCatalog(DEFAULT_MENU).catch(() => {});
+      .then(async (dbCatalog) => {
+        if (!isMounted) return;
+        const initialMenu = dbCatalog && dbCatalog.length > 0 ? dbCatalog : loadSafeMenu();
+        setProducts(initialMenu);
+
+        // Auto background sync from central sheet matrix if connected
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          try {
+            const synced = await sync.fetchMenuFromCentralSheet(
+              sync.team,
+              sync.menuSheetId,
+              initialMenu,
+              true
+            );
+            if (isMounted && synced && synced.length > 0) {
+              setProducts(synced);
+              localStorage.setItem('POS_MENU', JSON.stringify(synced));
+              saveCatalog(synced).catch(() => {});
+            }
+          } catch (err) {
+            console.warn('Initial central sheet sync silent fallback:', err);
+          }
         }
       })
       .catch((err) => {
         console.warn('Failed to load catalog from IndexedDB:', err);
       });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Handle Team change with automatic cart wipe to avoid cross-division order mixups
+  const handleTeamChange = useCallback((newTeam: TeamDivision) => {
+    orderSession.clearCart();
+    sync.setTeam(newTeam);
+    showToast(`Beralih ke ${newTeam} (Keranjang dikosongkan)`);
+  }, [orderSession, sync, showToast]);
+
+  const handleMenuSheetIdChange = useCallback((newSheetId: string) => {
+    sync.setMenuSheetId(newSheetId);
+    showToast('ID Spreadsheet Master diperbarui');
+  }, [sync, showToast]);
+
+  const handleFetchMenu = useCallback(
+    async (
+      teamToFetch: TeamDivision,
+      sheetId?: string,
+      existingProducts?: Product[]
+    ): Promise<Product[]> => {
+      const fetched = await sync.fetchMenuFromCentralSheet(
+        teamToFetch,
+        sheetId || sync.menuSheetId,
+        existingProducts || products,
+        true
+      );
+      if (fetched && fetched.length > 0) {
+        setProducts(fetched);
+        localStorage.setItem('POS_MENU', JSON.stringify(fetched));
+        saveCatalog(fetched).catch(() => {});
+      }
+      return fetched;
+    },
+    [sync, products]
+  );
 
   // Listen for background auto-sync completion events
   useEffect(() => {
@@ -224,6 +281,7 @@ export default function App() {
         isInstallable={isInstallable}
         isOnline={isOnline}
         isBatterySaver={sync.isBatterySaver}
+        team={sync.team}
         onSyncClick={handleSyncPillClick}
         onResetCart={() => {
           orderSession.clearCart();
@@ -300,8 +358,13 @@ export default function App() {
         products={products}
         customQrisImage={customQrisImage}
         isBatterySaver={sync.isBatterySaver}
+        team={sync.team}
+        menuSheetId={sync.menuSheetId}
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
+        onTeamChange={handleTeamChange}
+        onMenuSheetIdChange={handleMenuSheetIdChange}
+        onFetchMenu={handleFetchMenu}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onSaveQrisImage={handleSaveQrisImage}
         onResetQrisImage={handleResetQrisImage}

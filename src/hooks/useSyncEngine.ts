@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { syncEngine, SyncEngineState } from '../services/syncEngine';
-import { QueuedOrder, Product } from '../types';
+import { QueuedOrder, Product, TeamDivision } from '../types';
 
 export function useSyncEngine() {
   const [state, setState] = useState<SyncEngineState>(syncEngine.getState());
@@ -15,6 +15,28 @@ export function useSyncEngine() {
   const setApiUrl = useCallback((url: string) => {
     syncEngine.setApiUrl(url);
   }, []);
+
+  const setTeam = useCallback((team: TeamDivision) => {
+    syncEngine.setTeam(team);
+  }, []);
+
+  const setMenuSheetId = useCallback((sheetInput: string) => {
+    syncEngine.setMenuSheetId(sheetInput);
+  }, []);
+
+  const fetchMenuFromCentralSheet = useCallback(
+    async (teamOverride?: TeamDivision, sheetInputOverride?: string, existingProducts?: Product[], preserveCustom = true) => {
+      return syncEngine.fetchMenuFromCentralSheet(teamOverride, sheetInputOverride, existingProducts, preserveCustom);
+    },
+    []
+  );
+
+  const parseMenuFromCsv = useCallback(
+    (csvText: string, targetTeam: TeamDivision, existingProducts?: Product[], preserveCustom = true) => {
+      return syncEngine.parseMenuFromCsv(csvText, targetTeam, existingProducts, preserveCustom);
+    },
+    []
+  );
 
   const enqueue = useCallback((order: QueuedOrder) => {
     syncEngine.enqueue(order);
@@ -44,8 +66,14 @@ export function useSyncEngine() {
     isSyncing: state.isSyncing,
     hasSyncError: state.hasSyncError,
     apiUrl: state.apiUrl,
+    team: state.team,
+    menuSheetId: state.menuSheetId,
     isBatterySaver: state.isBatterySaver,
     setApiUrl,
+    setTeam,
+    setMenuSheetId,
+    fetchMenuFromCentralSheet,
+    parseMenuFromCsv,
     setBatterySaver,
     enqueue,
     processQueue,
