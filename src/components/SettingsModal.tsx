@@ -14,7 +14,6 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Lock,
-  Sparkles,
   ExternalLink,
 } from 'lucide-react';
 import { Product, TeamDivision } from '../types';
@@ -55,11 +54,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   customQrisImage,
   isBatterySaver = false,
   team = 'Team A',
-  menuSheetId = DEFAULT_MENU_SHEET_ID,
   onClose,
   onSave,
   onTeamChange,
-  onMenuSheetIdChange,
   onFetchMenu,
   onOpenHistory,
   onSaveQrisImage,
@@ -68,554 +65,230 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [urlInput, setUrlInput] = useState(apiUrl);
   const [selectedTeam, setSelectedTeam] = useState<TeamDivision>(team);
-  const [sheetIdInput, setSheetIdInput] = useState<string>(menuSheetId || DEFAULT_MENU_SHEET_ID);
-  const [showSheetConfig, setShowSheetConfig] = useState(false);
   const [isSyncingMenu, setIsSyncingMenu] = useState(false);
   const [editorProducts, setEditorProducts] = useState<Product[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Initialize editor list and props when modal opens
   React.useEffect(() => {
     if (isOpen) {
       setUrlInput(apiUrl);
       setSelectedTeam(team);
-      setSheetIdInput(menuSheetId || DEFAULT_MENU_SHEET_ID);
       setEditorProducts(JSON.parse(JSON.stringify(products)));
       setFeedback(null);
     }
-  }, [isOpen, apiUrl, team, menuSheetId, products]);
+  }, [isOpen, apiUrl, team, products]);
 
   if (!isOpen) return null;
 
-  const handleSelectTeam = async (newTeam: TeamDivision) => {
-    triggerHaptic('light');
-    setSelectedTeam(newTeam);
-    if (onTeamChange) {
-      onTeamChange(newTeam);
-    }
-
-    // Auto fetch menu matrix for newly selected team if fetcher provided
-    if (onFetchMenu) {
-      setIsSyncingMenu(true);
-      try {
-        const fetched = await onFetchMenu(newTeam, sheetIdInput.trim(), editorProducts);
-        if (fetched && fetched.length > 0) {
-          setEditorProducts(fetched);
-          setFeedback({
-            type: 'success',
-            message: `✓ Menu ${newTeam} berhasil dimuat (${fetched.length} item)`,
-          });
-          triggerHaptic('success');
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
-        setFeedback({ type: 'error', message: msg });
-        triggerHaptic('warning');
-      } finally {
-        setIsSyncingMenu(false);
-      }
-    }
-  };
-
-  const handleSyncMenuClick = async () => {
-    triggerHaptic('medium');
+  const syncMenu = async (targetTeam: TeamDivision, announce = true) => {
     if (!onFetchMenu) return;
-
     setIsSyncingMenu(true);
-    setFeedback(null);
+    if (announce) setFeedback(null);
     try {
-      const fetched = await onFetchMenu(selectedTeam, sheetIdInput.trim(), editorProducts);
-      if (fetched && fetched.length > 0) {
+      const fetched = await onFetchMenu(targetTeam, DEFAULT_MENU_SHEET_ID, editorProducts);
+      if (fetched.length > 0) {
         setEditorProducts(fetched);
-        setFeedback({
-          type: 'success',
-          message: `✓ Menu ${selectedTeam} tersinkron (${fetched.length} item)`,
-        });
+        if (announce) {
+          setFeedback({ type: 'success', message: `Menu ${targetTeam} tersinkron (${fetched.length} item)` });
+        }
         triggerHaptic('success');
-      } else {
-        setFeedback({
-          type: 'error',
-          message: 'Sheet tidak mengembalikan item untuk divisi ini.',
-        });
+      } else if (announce) {
+        setFeedback({ type: 'error', message: 'Sheet tidak mengembalikan item untuk divisi ini.' });
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
-      setFeedback({ type: 'error', message: msg });
+      const message = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
+      setFeedback({ type: 'error', message });
       triggerHaptic('warning');
     } finally {
       setIsSyncingMenu(false);
     }
   };
 
+  const handleSelectTeam = async (newTeam: TeamDivision) => {
+    triggerHaptic('light');
+    setSelectedTeam(newTeam);
+    onTeamChange?.(newTeam);
+    await syncMenu(newTeam, false);
+  };
+
   const handleAddCustomRow = () => {
     triggerHaptic('light');
-    setEditorProducts([
-      ...editorProducts,
-      {
-        id: 'custom_' + Date.now(),
-        name: '',
-        original_name: '',
-        price: 5000,
-        is_custom: true,
-      },
+    setEditorProducts((current) => [
+      ...current,
+      { id: `custom_${Date.now()}`, name: '', original_name: '', price: 5000, is_custom: true },
     ]);
   };
 
-  const handleRemoveRow = (idx: number) => {
-    triggerHaptic('warning');
-    setEditorProducts(editorProducts.filter((_: Product, i: number) => i !== idx));
+  const handleFieldChange = (idx: number, field: 'name' | 'price', value: string | number) => {
+    setEditorProducts((current) => {
+      const next = [...current];
+      if (field === 'name') {
+        next[idx] = { ...next[idx], name: String(value), original_name: next[idx].original_name || String(value) };
+      } else {
+        next[idx] = { ...next[idx], price: Math.max(0, parseInt(String(value), 10) || 0) };
+      }
+      return next;
+    });
   };
 
   const handleQrisFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (typeof ev.target?.result === 'string') {
-        if (onSaveQrisImage) {
-          onSaveQrisImage(ev.target.result);
-          triggerHaptic('success');
-          setFeedback({ type: 'success', message: 'Gambar QRIS (WebP) berhasil disimpan!' });
-        }
+    reader.onload = (event) => {
+      if (typeof event.target?.result === 'string') {
+        onSaveQrisImage?.(event.target.result);
+        triggerHaptic('success');
+        setFeedback({ type: 'success', message: 'Gambar QRIS berhasil disimpan!' });
       }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
 
-  const handleFieldChange = (idx: number, field: 'name' | 'price', value: string | number) => {
-    const next = [...editorProducts];
-    if (field === 'name') {
-      next[idx].name = String(value);
-      if (!next[idx].original_name) next[idx].original_name = String(value);
-    } else {
-      next[idx].price = Math.max(0, parseInt(String(value), 10) || 0);
-    }
-    setEditorProducts(next);
-  };
-
   const handleSave = async () => {
     setIsSaving(true);
     setFeedback(null);
-
-    if (sheetIdInput.trim() !== menuSheetId && onMenuSheetIdChange) {
-      onMenuSheetIdChange(sheetIdInput.trim());
-    }
-
-    if (selectedTeam !== team && onTeamChange) {
-      onTeamChange(selectedTeam);
-    }
-
+    if (selectedTeam !== team) onTeamChange?.(selectedTeam);
     const cleaned = editorProducts
-      .filter((p: Product) => p.name.trim() !== '')
-      .map((p: Product) => ({
-        ...p,
-        name: p.name.trim(),
-        original_name: p.original_name || p.name.trim(),
-        price: Number(p.price) || 0,
+      .filter((product) => product.name.trim() !== '')
+      .map((product) => ({
+        ...product,
+        name: product.name.trim(),
+        original_name: product.original_name || product.name.trim(),
+        price: Number(product.price) || 0,
       }));
-
     try {
       await onSave(urlInput.trim(), cleaned.length > 0 ? cleaned : products);
       triggerHaptic('success');
       setFeedback({ type: 'success', message: 'Pengaturan & Menu berhasil disimpan!' });
-      setTimeout(() => {
-        onClose();
-      }, 700);
+      setTimeout(onClose, 700);
     } catch (err: unknown) {
       triggerHaptic('warning');
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan';
-      setFeedback({ type: 'error', message: msg });
+      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Gagal menyimpan pengaturan' });
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">
-      {/* Modal Surface */}
-      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col border border-slate-200/80 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <img
-              src={APP_LOGO_DATA}
-              alt="Logo AYO DANUSAN!"
-              className="w-7 h-7 rounded-lg object-contain border border-black/[0.04] bg-white shrink-0"
-            />
-            <div>
-              <h2 className="text-base font-bold text-slate-900 leading-tight">
-                Pengaturan &amp; Menu
-              </h2>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Sinkronisasi menu divisi &amp; kasir
-              </p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/40 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92dvh] flex flex-col overflow-hidden border border-slate-200/80">
+        <header className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <img src={APP_LOGO_DATA} alt="Logo AYO DANUSAN!" className="w-9 h-9 rounded-xl object-contain border border-slate-100 bg-white" />
+            <h2 className="text-lg font-bold tracking-tight text-slate-900">Pengaturan &amp; Menu</h2>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onClose();
-            }}
-            className="relative w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation"
-          >
+          <button type="button" onClick={() => { triggerHaptic('light'); onClose(); }} aria-label="Tutup pengaturan" className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
             <X className="w-4 h-4" />
           </button>
-        </div>
+        </header>
 
-        {/* Body Content */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
-          {/* Status Feedback banner */}
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-5">
           {feedback && (
-            <div
-              className={`p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
-                feedback.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
-              }`}
-            >
-              {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              )}
+            <div className={`p-3 rounded-xl text-sm font-medium flex items-center gap-2 ${feedback.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+              {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
               <span>{feedback.message}</span>
             </div>
           )}
 
-          {/* Section: Divisi Kasir (Team Segmented Control) */}
-          <div className="space-y-2 pb-3 border-b border-black/[0.06]">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-[#007AFF]" />
-                <span>Divisi Penjualan (Sheet Master)</span>
-              </label>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${sheetIdInput}/edit`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-[#007AFF] transition-colors touch-manipulation"
-                  title="Buka Spreadsheet Master di Google Sheets"
-                >
-                  <span>Buka Sheet</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-sm shadow-slate-900/[0.03]">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-[#007AFF]" />
+                Divisi Penjualan
+              </h3>
+              <div className="flex items-center gap-3 shrink-0">
+                <a href={`https://docs.google.com/spreadsheets/d/${DEFAULT_MENU_SHEET_ID}/edit`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-[#007AFF] transition-colors" title="Buka spreadsheet di Google Sheets">
+                  Buka Sheet <ExternalLink className="w-3 h-3" />
                 </a>
-                <span className="text-slate-200">|</span>
-                <button
-                  type="button"
-                  onClick={handleSyncMenuClick}
-                  disabled={isSyncingMenu}
-                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:text-[#005bb5] active:scale-95 disabled:opacity-50 touch-manipulation"
-                  title="Tarik daftar menu terbaru dari Google Sheet Master"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isSyncingMenu ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingMenu ? 'Menyinkronkan...' : 'Sinkron Sheet'}</span>
+                <button type="button" onClick={() => syncMenu(selectedTeam)} disabled={isSyncingMenu} className="inline-flex items-center gap-1 text-xs font-semibold text-[#007AFF] hover:text-blue-700 disabled:opacity-50" title="Sinkronkan menu">
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMenu ? 'animate-spin' : ''}`} />
+                  {isSyncingMenu ? 'Menyinkronkan' : 'Sinkron'}
                 </button>
               </div>
             </div>
 
-            {/* iOS Style Segmented Control */}
-            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl gap-1">
-              {TEAMS.map((t) => {
-                const isActive = selectedTeam === t;
+            <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1">
+              {TEAMS.map((currentTeam) => {
+                const active = selectedTeam === currentTeam;
                 return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => handleSelectTeam(t)}
-                    className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all duration-150 touch-manipulation ${
-                      isActive
-                        ? 'bg-white text-slate-900 shadow-xs ring-1 ring-black/[0.04]'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {t}
+                  <button key={currentTeam} type="button" onClick={() => handleSelectTeam(currentTeam)} className={`rounded-lg py-2.5 text-sm font-semibold transition-all ${active ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/70' : 'text-slate-500 hover:text-slate-800'}`}>
+                    {currentTeam}
                   </button>
                 );
               })}
             </div>
+          </section>
 
-            {/* Sheet Link Info & Optional ID config */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setShowSheetConfig(!showSheetConfig)}
-                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 inline-flex items-center gap-1"
-              >
-                <span>{showSheetConfig ? 'Sembunyikan ID / Link Sheet' : 'Atur ID / Link Spreadsheet Master'}</span>
-                <ChevronRight className={`w-3 h-3 transition-transform ${showSheetConfig ? 'rotate-90' : ''}`} />
-              </button>
-
-              {showSheetConfig && (
-                <div className="mt-2 space-y-2 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06]">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-medium">URL atau ID Google Sheet:</span>
-                    <button
-                      type="button"
-                      onClick={() => setSheetIdInput(DEFAULT_MENU_SHEET_ID)}
-                      className="text-[#007AFF] hover:underline text-[10px]"
-                    >
-                      Reset Bawaan
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={sheetIdInput}
-                    onChange={(e) => setSheetIdInput(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/.../edit atau ID Sheet"
-                    className="w-full h-8 px-2.5 rounded-lg bg-white border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
-                  />
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                    💡 <strong>Tips:</strong> Pastikan spreadsheet kamu dibagikan dengan akses <em>&quot;Siapa saja yang memiliki link sebagai Pelihat (Viewer)&quot;</em> agar data dapat dibaca oleh POS.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section: Open Transaction History */}
           {onOpenHistory && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenHistory();
-              }}
-              className="pressable w-full py-3 px-1 border-b border-black/[0.06] text-left flex items-center justify-between gap-3 transition hover:bg-black/[0.02]"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <span className="text-sm font-medium text-slate-900 truncate">
-                  Riwayat Transaksi
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-xs font-medium text-slate-400 shrink-0">
-                <ChevronRight className="w-4 h-4" />
-              </div>
+            <button type="button" onClick={() => { triggerHaptic('light'); onOpenHistory(); }} className="w-full rounded-2xl border border-slate-200 p-3.5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 transition">
+              <span className="flex items-center gap-3"><span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center"><Receipt className="w-4 h-4" /></span><span className="text-sm font-medium text-slate-900">Riwayat Transaksi</span></span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
             </button>
           )}
 
-          {/* Section: Mode Hemat Baterai */}
-          <div className="py-3 px-1 border-b border-black/[0.06] flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                <ZapOff className="w-4 h-4" />
-              </div>
-              <span className="text-sm font-medium text-slate-900">
-                Mode Hemat Baterai
-              </span>
-            </div>
-
-            {/* Apple iOS Style Switch Toggle */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={Boolean(isBatterySaver)}
-              onClick={() => {
-                triggerHaptic('medium');
-                if (onToggleBatterySaver) {
-                  onToggleBatterySaver(!isBatterySaver);
-                }
-              }}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:ring-offset-2 touch-manipulation ${
-                isBatterySaver ? 'bg-[#007AFF]' : 'bg-slate-200'
-              }`}
-              title="Mode Hemat Baterai"
-              aria-label="Toggle Mode Hemat Baterai"
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                  isBatterySaver ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
+          <div className="rounded-2xl border border-slate-200 p-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3"><span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center"><ZapOff className="w-4 h-4" /></span><span className="text-sm font-medium text-slate-900">Mode Hemat Baterai</span></div>
+            <button type="button" role="switch" aria-checked={Boolean(isBatterySaver)} onClick={() => { triggerHaptic('medium'); onToggleBatterySaver?.(!isBatterySaver); }} aria-label="Toggle Mode Hemat Baterai" className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${isBatterySaver ? 'bg-[#007AFF]' : 'bg-slate-200'}`}>
+              <span className={`pointer-events-none absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${isBatterySaver ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </button>
           </div>
 
-          {/* Section: URL Apps Script (Backend Pengiriman Transaksi) */}
-          <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-medium text-slate-500">
-              URL Apps Script (Tujuan Transaksi)
-            </label>
-            <input
-              type="url"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
-            />
-          </div>
+          <section className="space-y-2">
+            <label className="text-xs font-semibold text-slate-600" htmlFor="apps-script-url">URL Apps Script <span className="font-normal text-slate-400">(Tujuan Transaksi)</span></label>
+            <input id="apps-script-url" type="url" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-[#007AFF] focus:bg-white transition" />
+          </section>
 
-          {/* Section: QRIS Merchant */}
-          <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-medium text-slate-500">
-              Gambar QRIS
-            </label>
-
-            <div className="p-2.5 border border-black/[0.06] rounded-xl bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-16 bg-white border border-black/[0.06] rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-1">
-                  <img
-                    src={customQrisImage || DEFAULT_QRIS_DATA}
-                    alt="QRIS"
-                    className="w-full h-full object-contain rounded"
-                  />
-                </div>
-
-                <div className="flex-1 space-y-1.5">
-                  <label className="cursor-pointer select-none pressable w-full h-8 px-3 rounded-lg bg-white hover:bg-slate-50 border border-black/[0.08] text-xs font-medium text-slate-700 flex items-center justify-center gap-1.5 transition active:scale-98">
-                    <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
-                    <span>Ganti Gambar QRIS</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleQrisFileChange}
-                      className="sr-only"
-                    />
-                  </label>
-
-                  {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('warning');
-                        onResetQrisImage();
-                        setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
-                      }}
-                      className="pressable w-full h-7 px-2 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Kembalikan ke Bawaan</span>
-                    </button>
-                  )}
-                </div>
+          <section className="space-y-2">
+            <label className="text-xs font-semibold text-slate-600">Gambar QRIS</label>
+            <div className="p-3 border border-slate-200 rounded-2xl bg-slate-50/70 flex items-center gap-3">
+              <div className="w-14 h-16 bg-white border border-slate-200 rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1"><img src={customQrisImage || DEFAULT_QRIS_DATA} alt="QRIS" className="w-full h-full object-contain rounded" /></div>
+              <div className="flex-1 space-y-2">
+                <label className="cursor-pointer w-full h-9 px-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 flex items-center justify-center gap-2 transition"><Upload className="w-3.5 h-3.5 text-[#007AFF]" /><span>Ganti Gambar QRIS</span><input type="file" accept="image/*" onChange={handleQrisFileChange} className="sr-only" /></label>
+                {customQrisImage && customQrisImage !== DEFAULT_QRIS_DATA && onResetQrisImage && <button type="button" onClick={() => { triggerHaptic('warning'); onResetQrisImage(); setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' }); }} className="w-full h-8 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"><RotateCcw className="w-3 h-3" />Kembalikan ke Bawaan</button>}
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Section: Menu Editor & Differentiation */}
-          <div className="space-y-2.5 pt-1">
+          <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <div>
-                <label className="text-xs font-bold text-slate-900">
-                  Daftar Menu &amp; Harga ({selectedTeam})
-                </label>
-                <p className="text-[10px] text-slate-400">
-                  Item Sheet terkunci namanya; item Custom bebas diubah.
-                </p>
-              </div>
-              <span className="text-xs text-slate-400 font-mono tabular-nums">
-                {editorProducts.length} item
-              </span>
+              <h3 className="text-sm font-semibold text-slate-900">Daftar Menu &amp; Harga</h3>
+              <span className="text-xs text-slate-400 font-mono tabular-nums">{editorProducts.length} item</span>
             </div>
-
             <div className="space-y-2 max-h-[300px] overflow-y-auto px-0.5">
               {editorProducts.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  Belum ada menu untuk divisi ini. Klik tombol <strong>Sinkron Sheet</strong> di atas atau tambah menu custom di bawah.
-                </div>
-              ) : (
-                editorProducts.map((item: Product, idx: number) => {
-                  const isCustom = Boolean(item.is_custom);
-                  return (
-                    <div
-                      key={item.id || idx}
-                      className="grid grid-cols-[1fr_96px_36px] gap-1.5 items-center w-full"
-                    >
-                      {/* Name input with tag */}
-                      <div className="relative min-w-0 flex items-center">
-                        <input
-                          type="text"
-                          value={item.name}
-                          readOnly={!isCustom}
-                          onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
-                          placeholder="Nama Barang"
-                          className={`min-w-0 w-full h-9 pl-2.5 pr-14 rounded-lg border text-xs font-medium text-slate-800 transition focus:outline-none ${
-                            !isCustom
-                              ? 'bg-slate-100/70 border-slate-200 cursor-default select-none'
-                              : 'bg-white border-black/[0.08] focus:ring-1 focus:ring-[#007AFF]'
-                          }`}
-                        />
-                        <span
-                          className={`absolute right-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 pointer-events-none ${
-                            !isCustom
-                              ? 'bg-slate-200 text-slate-600'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {isCustom ? 'Custom' : 'Sheet'}
-                        </span>
-                      </div>
-
-                      {/* Price input (Always editable by cashier) */}
-                      <div className="relative min-w-0 w-[96px] shrink-0">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
-                          Rp
-                        </span>
-                        <input
-                          type="number"
-                          value={item.price}
-                          onChange={(e) => handleFieldChange(idx, 'price', e.target.value)}
-                          placeholder="Harga"
-                          className="h-9 pl-7 pr-2 w-full rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-medium text-right text-slate-800 font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
-                        />
-                      </div>
-
-                      {/* Action (Delete for custom, Lock indicator for sheet) */}
-                      {isCustom ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRow(idx)}
-                          className="pressable w-8 h-9 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90 touch-manipulation"
-                          title="Hapus Menu Custom"
-                          aria-label="Hapus Menu Custom"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <div
-                          className="w-8 h-9 flex items-center justify-center text-slate-300"
-                          title="Menu bawaan Sheet Master (tidak dapat dihapus satuan, nama dikunci)"
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                        </div>
-                      )}
+                <div className="p-5 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">Belum ada menu. Sinkronkan dari Sheet atau tambahkan menu custom.</div>
+              ) : editorProducts.map((item, idx) => {
+                const isCustom = Boolean(item.is_custom);
+                return (
+                  <div key={item.id || idx} className="grid grid-cols-[1fr_100px_36px] gap-2 items-center">
+                    <div className="relative min-w-0 flex items-center">
+                      <input type="text" value={item.name} readOnly={!isCustom} onChange={(e) => handleFieldChange(idx, 'name', e.target.value)} placeholder="Nama Barang" className={`min-w-0 w-full h-10 pl-3 pr-14 rounded-xl border text-xs font-medium text-slate-800 focus:outline-none ${!isCustom ? 'bg-slate-100 border-slate-200 cursor-default select-none' : 'bg-white border-slate-200 focus:ring-2 focus:ring-blue-100 focus:border-[#007AFF]'}`} />
+                      <span className={`absolute right-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide pointer-events-none ${!isCustom ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>{isCustom ? 'Custom' : 'Sheet'}</span>
                     </div>
-                  );
-                })
-              )}
+                    <div className="relative min-w-0">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">Rp</span>
+                      <input type="number" value={item.price} onChange={(e) => handleFieldChange(idx, 'price', e.target.value)} placeholder="Harga" className="h-10 pl-7 pr-2 w-full rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-right text-slate-800 font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-[#007AFF] focus:bg-white" />
+                    </div>
+                    {isCustom ? (
+                      <button type="button" onClick={() => { triggerHaptic('warning'); setEditorProducts((current) => current.filter((_, i) => i !== idx)); }} className="w-9 h-10 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center transition" title="Hapus Menu Custom" aria-label="Hapus Menu Custom"><Trash2 className="w-4 h-4" /></button>
+                    ) : <div className="w-9 h-10 flex items-center justify-center text-slate-300" title="Menu bawaan Sheet"><Lock className="w-3.5 h-3.5" /></div>}
+                  </div>
+                );
+              })}
             </div>
-
-            {/* Add Custom Row Button */}
-            <button
-              type="button"
-              onClick={handleAddCustomRow}
-              className="pressable w-full h-9 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-[#007AFF] text-xs font-medium flex items-center justify-center gap-1.5 transition active:scale-98 touch-manipulation"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Tambah Menu Mendadak (Custom)</span>
-            </button>
-          </div>
+            <button type="button" onClick={handleAddCustomRow} className="w-full h-10 rounded-xl border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-[#007AFF] text-xs font-semibold flex items-center justify-center gap-2 transition"><Plus className="w-4 h-4" /><span>Tambah Menu Custom</span></button>
+          </section>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/[0.06] flex items-center justify-end shrink-0">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs transition disabled:opacity-50 touch-manipulation"
-          >
-            <Save className="w-3.5 h-3.5" />
+        <footer className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-slate-100 shrink-0">
+          <button type="button" onClick={handleSave} disabled={isSaving} className="w-full h-11 rounded-xl bg-[#007AFF] hover:bg-blue-600 active:scale-[0.985] text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50">
+            <Save className="w-4 h-4" />
             <span>{isSaving ? 'Menyimpan...' : 'Simpan & Terapkan'}</span>
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );
