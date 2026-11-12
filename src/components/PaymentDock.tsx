@@ -1,176 +1,108 @@
-import React, { useState } from 'react';
-import { Camera, QrCode, Banknote, Eye } from 'lucide-react';
-import { CameraActionSheet } from './CameraActionSheet';
+import React from 'react';
+import { Plus, Minus } from 'lucide-react';
+import { Product } from '../types';
 import { triggerHaptic } from '../utils/haptics';
-import { BlobRegistry } from '../utils/blobRegistry';
+import { NumericQuantityInput } from './NumericQuantityInput';
 
-interface PaymentDockProps {
-  totalQty: number;
-  netTotal: number;
-  paymentMethod: 'QRIS' | 'Cash';
-  photoBase64: string;
-  onPaymentChange: (method: 'QRIS' | 'Cash') => void;
-  onPhotoCaptured: (base64: string, sizeBytes?: number) => void;
-  onViewPhoto: () => void;
-  onSubmit: () => void;
+interface ProductCardProps {
+  product: Product;
+  quantity: number;
+  onIncrement: (productId: string) => void;
+  onDecrement: (productId: string) => void;
+  onQuantityChange: (productId: string, quantity: number) => void;
 }
 
-export const PaymentDock: React.FC<PaymentDockProps> = ({
-  totalQty,
-  netTotal,
-  paymentMethod,
-  photoBase64,
-  onPaymentChange,
-  onPhotoCaptured,
-  onViewPhoto,
-  onSubmit,
+export const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  quantity,
+  onIncrement,
+  onDecrement,
+  onQuantityChange,
 }) => {
-  const [isCameraActionOpen, setIsCameraActionOpen] = useState(false);
+  const isActive = quantity > 0;
 
-  const isPhotoRequired = paymentMethod === 'QRIS';
-  const hasPhoto = Boolean(photoBase64);
-  const isSubmitDisabled = totalQty === 0 || (isPhotoRequired && !hasPhoto);
-
-  let submitButtonText = 'Pilih Menu';
-  if (totalQty > 0) {
-    if (isPhotoRequired && !hasPhoto) {
-      submitButtonText = `${totalQty} barang · Bukti QRIS`;
-    } else {
-      submitButtonText = `${totalQty} barang · Simpan Pesanan`;
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-stepper]')) {
+      return;
     }
-  }
+    triggerHaptic('cart_add');
+    onIncrement(product.id);
+  };
 
-  const handleSubmit = () => {
-    if (isSubmitDisabled) return;
-    triggerHaptic('checkout');
-    onSubmit();
+  const handleMinusClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerHaptic(quantity === 1 ? 'warning' : 'light');
+    onDecrement(product.id);
+  };
+
+  const handlePlusClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerHaptic('cart_add');
+    onIncrement(product.id);
   };
 
   return (
-    <section className="md:hidden fixed left-0 right-0 bottom-0 z-40 bg-white/95 backdrop-blur-md border-t border-black/[0.06] shadow-[0_-1px_3px_rgba(0,0,0,0.03)] pb-[calc(10px+env(safe-area-inset-bottom,10px))] pt-2.5 px-3.5">
-      <div className="max-w-xl mx-auto flex flex-col gap-2">
-        {/* Controls Row: Apple Inset Segmented Payment & Camera */}
-        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-          {/* iOS UISegmentedControl for Payment */}
-          <div className="grid grid-cols-2 bg-[#E5E5EA] p-0.5 rounded-xl h-10 border border-black/5 select-none touch-manipulation">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('selection');
-                onPaymentChange('QRIS');
-              }}
-              className={`pressable flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-bold transition-all active:scale-[0.98] ${
-                paymentMethod === 'QRIS'
-                  ? 'bg-white text-[#007AFF] shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              <span>QRIS</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('selection');
-                onPaymentChange('Cash');
-              }}
-              className={`pressable flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-semibold transition-all active:scale-[0.98] ${
-                paymentMethod === 'Cash'
-                  ? 'bg-white text-[#007AFF] shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Banknote className="w-3.5 h-3.5" />
-              <span>Tunai</span>
-            </button>
-          </div>
-
-          {/* Native Media Selector (Camera & Gallery Action Sheet) */}
-          <div className="flex items-center gap-1.5 shrink-0 select-none touch-manipulation">
-            {hasPhoto ? (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    onViewPhoto();
-                  }}
-                  className="pressable h-10 px-2 rounded-xl bg-slate-100 border border-black/[0.08] text-slate-800 flex items-center gap-1.5 text-xs font-semibold shadow-2xs hover:bg-slate-200/70 transition active:scale-95"
-                  title="Lihat Bukti Pembayaran"
-                >
-                  <img
-                    src={photoBase64}
-                    alt="Bukti pembayaran"
-                    className="w-6 h-6 rounded-md object-cover border border-black/[0.08]"
-                  />
-                  <Eye className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    setIsCameraActionOpen(true);
-                  }}
-                  className="pressable h-10 px-2.5 rounded-xl bg-[#F5F5F7] hover:bg-slate-200/80 border border-black/[0.06] text-slate-700 text-xs font-medium flex items-center gap-1 transition active:scale-95"
-                  title="Ganti Bukti (Kamera / Galeri)"
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                  <span>Ganti</span>
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setIsCameraActionOpen(true);
-                }}
-                className={`pressable h-10 px-3 sm:px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition active:scale-[0.98] shadow-2xs ${
-                  isPhotoRequired && totalQty > 0
-                    ? 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-blue-600'
-                    : 'bg-[#F5F5F7] text-slate-700 border-black/[0.06] hover:bg-slate-200/80'
-                }`}
-                title={isPhotoRequired ? 'Lampirkan Bukti QRIS (Wajib)' : 'Lampirkan Bukti Tunai (Opsional)'}
-              >
-                <Camera className="w-4 h-4 shrink-0" />
-                <span className="whitespace-nowrap">{paymentMethod === 'QRIS' ? 'Bukti QRIS' : 'Bukti (Opsional)'}</span>
-              </button>
-            )}
-          </div>
+    <div
+      onClick={handleCardClick}
+      className={`pressable relative flex flex-col justify-between p-3 sm:p-3.5 rounded-[20px] cursor-pointer select-none touch-manipulation transition-all duration-150 active:scale-[0.985] min-h-[146px] border ${
+        isActive
+          ? 'bg-[#EEF5FF] border-[#CFE2FF] shadow-[0_8px_20px_rgba(0,122,255,0.08)]'
+          : 'bg-white/90 border-slate-200/80 hover:border-slate-300 hover:bg-white shadow-[0_4px_12px_rgba(15,23,42,0.03)]'
+      }`}
+    >
+      <div className="space-y-1.5">
+        <div className="flex items-start justify-between gap-1.5 min-h-[2.6rem]">
+          <span className="text-[14px] sm:text-[15px] font-semibold text-slate-900 leading-snug line-clamp-2 tracking-[-0.02em]">
+            {product.name}
+          </span>
         </div>
-
-        {/* Apple Native Standard Minimalist Submit Button */}
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isSubmitDisabled}
-          className={`pressable w-full h-12 rounded-xl font-bold flex items-center justify-between px-3.5 sm:px-4 transition duration-100 select-none touch-manipulation ${
-            isSubmitDisabled
-              ? 'bg-[#E5E5EA] text-slate-400 cursor-not-allowed border border-black/5'
-              : 'bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white shadow-sm'
-          }`}
-        >
-          <span className="text-[13px] sm:text-[14px] font-bold tracking-tight truncate min-w-0 pr-2">
-            {submitButtonText}
-          </span>
-          <span className="text-[14px] sm:text-[15px] font-extrabold num tracking-tight shrink-0 whitespace-nowrap">
-            Rp {Number(netTotal || 0).toLocaleString('id-ID')}
-          </span>
-        </button>
+        <div className="text-[12.5px] sm:text-[13px] font-semibold text-slate-500 font-mono tabular-nums tracking-[-0.02em]">
+          Rp {Number(product.price).toLocaleString('id-ID')}
+        </div>
       </div>
 
-      {/* Camera & Gallery Action Sheet */}
-      <CameraActionSheet
-        isOpen={isCameraActionOpen}
-        onClose={() => {
-          BlobRegistry.clearAll();
-          setIsCameraActionOpen(false);
-        }}
-        onPhotoCaptured={onPhotoCaptured}
-        title={paymentMethod === 'QRIS' ? 'Bukti Pembayaran QRIS' : 'Bukti Pembayaran Tunai'}
-      />
-    </section>
+      <div
+        data-stepper="true"
+        className={`flex items-center justify-between mt-2.5 px-1.5 py-1 rounded-xl h-10 transition-colors select-none touch-manipulation ${
+          isActive ? 'bg-white/80 border border-[#D7E8FF]' : 'bg-[#F5F5F7] border border-transparent'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={handleMinusClick}
+          disabled={!isActive}
+          className={`relative w-8 h-8 rounded-lg flex items-center justify-center font-bold transition active:scale-90 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation ${
+            isActive
+              ? 'bg-white text-rose-600 hover:bg-rose-50 shadow-sm'
+              : 'opacity-20 text-slate-400 cursor-not-allowed'
+          }`}
+          aria-label="Kurang satu"
+        >
+          <Minus className="w-4 h-4 stroke-[2.5]" />
+        </button>
+
+        <NumericQuantityInput
+          quantity={quantity}
+          onQuantityChange={(qty) => onQuantityChange(product.id, qty)}
+          ariaLabel={`Jumlah ${product.name}`}
+          className={`w-12 h-8 text-center text-base sm:text-[15px] rounded-lg bg-transparent focus:bg-white focus:ring-1 focus:ring-[#007AFF] outline-none transition selection:bg-blue-200 font-mono tabular-nums ${
+            isActive ? 'text-[#007AFF]' : 'text-slate-400'
+          }`}
+        />
+
+        <button
+          type="button"
+          onClick={handlePlusClick}
+          className={`relative w-8 h-8 rounded-lg flex items-center justify-center font-bold transition active:scale-90 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation ${
+            isActive
+              ? 'bg-[#007AFF] text-white hover:bg-blue-600 shadow-sm shadow-blue-200'
+              : 'bg-white text-slate-800 hover:bg-slate-50'
+          }`}
+          aria-label="Tambah satu"
+        >
+          <Plus className="w-4 h-4 stroke-[2.5]" />
+        </button>
+      </div>
+    </div>
   );
 };

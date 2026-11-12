@@ -1,111 +1,208 @@
 import React from 'react';
-import { Plus, Minus } from 'lucide-react';
-import { Product } from '../types';
+import {
+  RotateCcw,
+  Menu,
+  Download,
+  RefreshCw,
+  ZapOff,
+  Check,
+} from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
-import { NumericQuantityInput } from './NumericQuantityInput';
+import { TeamDivision } from '../types';
 
-interface ProductCardProps {
-  product: Product;
-  quantity: number;
-  onIncrement: (productId: string) => void;
-  onDecrement: (productId: string) => void;
-  onQuantityChange: (productId: string, quantity: number) => void;
+interface HeaderProps {
+  queueLength: number;
+  pendingTextCount?: number;
+  pendingPhotoCount?: number;
+  isSyncing: boolean;
+  apiUrl: string;
+  hasSyncError: boolean;
+  isInstallable: boolean;
+  isOnline?: boolean;
+  isBatterySaver?: boolean;
+  team?: TeamDivision;
+  onSyncClick: () => void;
+  onResetCart: () => void;
+  onOpenSettings: () => void;
+  onOpenPWAInfo: () => void;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({
-  product,
-  quantity,
-  onIncrement,
-  onDecrement,
-  onQuantityChange,
+export const Header: React.FC<HeaderProps> = ({
+  queueLength,
+  pendingTextCount = 0,
+  pendingPhotoCount = 0,
+  isSyncing,
+  apiUrl,
+  hasSyncError,
+  isInstallable,
+  isOnline = true,
+  isBatterySaver = false,
+  team = 'Team A',
+  onSyncClick,
+  onResetCart,
+  onOpenSettings,
+  onOpenPWAInfo,
 }) => {
-  const isActive = quantity > 0;
+  let syncLabel = 'Tersinkron';
+  let dotColor = 'bg-slate-400';
+  const isFullySynced = isOnline && Boolean(apiUrl) && !hasSyncError && !isSyncing && queueLength === 0;
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    // Prevent double-increment if user tapped stepper directly
-    if ((e.target as HTMLElement).closest('[data-stepper]')) {
-      return;
+  if (!isOnline) {
+    if (queueLength > 0) {
+      syncLabel = `Offline (${queueLength})`;
+      dotColor = 'bg-slate-500';
+    } else {
+      syncLabel = 'Offline';
+      dotColor = 'bg-slate-400';
     }
-    triggerHaptic('cart_add');
-    onIncrement(product.id);
-  };
-
-  const handleMinusClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    triggerHaptic(quantity === 1 ? 'warning' : 'light');
-    onDecrement(product.id);
-  };
-
-  const handlePlusClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    triggerHaptic('cart_add');
-    onIncrement(product.id);
-  };
+  } else if (!apiUrl) {
+    syncLabel = queueLength > 0 ? `Atur URL (${queueLength})` : 'Atur URL';
+    dotColor = 'bg-rose-500';
+  } else if (hasSyncError) {
+    syncLabel = `Coba Lagi (${queueLength})`;
+    dotColor = 'bg-rose-500';
+  } else if (isSyncing) {
+    if (pendingTextCount > 0) {
+      syncLabel = `Sync Teks (${pendingTextCount})...`;
+    } else if (pendingPhotoCount > 0) {
+      syncLabel = `Upload Foto (${pendingPhotoCount})...`;
+    } else {
+      syncLabel = 'Menyinkronkan...';
+    }
+    dotColor = 'bg-[#007AFF]';
+  } else if (queueLength > 0) {
+    if (pendingTextCount === 0 && pendingPhotoCount > 0) {
+      syncLabel = `Upload Foto (${pendingPhotoCount})`;
+      dotColor = 'bg-slate-400';
+    } else {
+      syncLabel = `Antrean (${queueLength})`;
+      dotColor = 'bg-[#007AFF]';
+    }
+  }
 
   return (
-    <div
-      onClick={handleCardClick}
-      className={`pressable relative flex flex-col justify-between p-3 sm:p-3.5 rounded-2xl cursor-pointer select-none touch-manipulation transition-all duration-150 active:scale-[0.985] min-h-[120px] sm:min-h-[124px] ${
-        isActive
-          ? 'bg-blue-50/60'
-          : 'bg-white hover:bg-white/90'
-      }`}
-    >
-      {/* Top Details */}
-      <div className="space-y-1">
-        <div className="flex items-start justify-between gap-1.5 min-h-[2.5rem]">
-          <span className="text-[14px] sm:text-[15px] font-semibold text-slate-900 leading-snug line-clamp-2">
-            {product.name}
-          </span>
+    <header className="sticky top-0 left-0 right-0 z-30 shrink-0 bg-white/80 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_0_rgba(15,23,42,0.04)] pt-[env(safe-area-inset-top,0px)]">
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 h-16 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenPWAInfo();
+            }}
+            className="pressable text-left group flex items-center min-h-[44px] focus:outline-none shrink-0 touch-manipulation rounded-xl hover:bg-slate-100/80 px-1.5 sm:px-2 transition-colors"
+            title="Ketuk untuk melihat Panduan Pasang PWA"
+            aria-label="Buka Panduan Pasang PWA"
+          >
+            <span className="text-base sm:text-xl font-black tracking-[-0.06em] text-slate-900 select-none group-hover:text-[#007AFF] transition-colors whitespace-nowrap">
+              AYO DANUSAN!
+            </span>
+          </button>
+
+          {team && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenSettings();
+              }}
+              className="pressable min-w-0 inline-flex items-center gap-1.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 transition-colors touch-manipulation"
+              title={`Divisi: ${team}. Ketuk untuk ganti divisi atau sinkron menu.`}
+              aria-label={`Divisi aktif ${team}. Buka pengaturan.`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#007AFF] shrink-0" />
+              <span className="text-[11px] sm:text-xs font-semibold tracking-[-0.02em] whitespace-nowrap">
+                {team}
+              </span>
+            </button>
+          )}
         </div>
-        <div className="text-[13px] font-medium text-slate-500 font-mono tabular-nums tracking-tight">
-          Rp {Number(product.price).toLocaleString('id-ID')}
+
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onSyncClick();
+            }}
+            className="pressable min-w-0 inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 transition-colors touch-manipulation"
+            aria-label="Status Sinkronisasi"
+            title={queueLength > 0 ? `Antrean: ${pendingTextCount} teks, ${pendingPhotoCount} foto. Klik untuk sinkronkan.` : 'Semua transaksi tersinkron'}
+          >
+            {isFullySynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5] shrink-0" />
+                <span className="hidden sm:inline text-[11px] font-medium text-slate-600 truncate tracking-tight">
+                  {syncLabel}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
+                <span className="text-[11px] font-medium text-slate-600 truncate tracking-tight max-w-[90px] sm:max-w-none">
+                  {syncLabel}
+                </span>
+                {isSyncing && (
+                  <RefreshCw className="w-3 h-3 text-[#007AFF] animate-spin shrink-0" />
+                )}
+              </>
+            )}
+          </button>
+
+          {isBatterySaver && (
+            <span
+              className="inline-flex items-center text-amber-500 p-1.5 rounded-lg bg-amber-50 border border-amber-200 shrink-0 transition-transform active:scale-95"
+              title="Mode Hemat Baterai aktif"
+              aria-label="Mode Hemat Baterai aktif"
+            >
+              <ZapOff className="w-3.5 h-3.5 stroke-[2.2]" />
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {isInstallable && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenPWAInfo();
+              }}
+              className="pressable inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] font-semibold text-[#007AFF] hover:bg-blue-50/80 transition-colors touch-manipulation border border-blue-100 bg-blue-50/50"
+              title="Pasang aplikasi ke Layar Utama HP"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline sm:inline">Pasang</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('warning');
+              onResetCart();
+            }}
+            className="pressable relative w-8 h-8 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors border border-slate-200 bg-white/80"
+            title="Reset Keranjang"
+            aria-label="Reset Keranjang"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenSettings();
+            }}
+            className="pressable relative w-8 h-8 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors border border-slate-200 bg-white/80"
+            title="Menu & Pengaturan"
+            aria-label="Menu & Pengaturan"
+          >
+            <Menu className="w-4 h-4 stroke-[2.2]" />
+          </button>
         </div>
       </div>
-
-      {/* Apple Native Stepper Control */}
-      <div
-        data-stepper="true"
-        className={`flex items-center justify-between mt-2.5 px-1.5 py-1 rounded-xl h-10 transition-colors select-none touch-manipulation ${
-          isActive ? 'bg-blue-100/50' : 'bg-[#F5F5F7]'
-        }`}
-      >
-        <button
-          type="button"
-          onClick={handleMinusClick}
-          disabled={!isActive}
-          className={`relative w-8 h-8 rounded-lg flex items-center justify-center font-bold transition active:scale-90 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation ${
-            isActive
-              ? 'bg-white text-rose-600 hover:bg-rose-50'
-              : 'opacity-20 text-slate-400 cursor-not-allowed'
-          }`}
-          aria-label="Kurang satu"
-        >
-          <Minus className="w-4 h-4 stroke-[2.5]" />
-        </button>
-
-        <NumericQuantityInput
-          quantity={quantity}
-          onQuantityChange={(qty) => onQuantityChange(product.id, qty)}
-          ariaLabel={`Jumlah ${product.name}`}
-          className={`w-12 h-8 text-center text-base sm:text-[15px] rounded-lg bg-transparent focus:bg-white focus:ring-1 focus:ring-[#007AFF] outline-none transition selection:bg-blue-200 font-mono tabular-nums ${
-            isActive ? 'text-[#007AFF]' : 'text-slate-400'
-          }`}
-        />
-
-        <button
-          type="button"
-          onClick={handlePlusClick}
-          className={`relative w-8 h-8 rounded-lg flex items-center justify-center font-bold transition active:scale-90 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation ${
-            isActive
-              ? 'bg-[#007AFF] text-white hover:bg-blue-600'
-              : 'bg-white text-slate-800 hover:bg-slate-50'
-          }`}
-          aria-label="Tambah satu"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-        </button>
-      </div>
-    </div>
+    </header>
   );
 };
