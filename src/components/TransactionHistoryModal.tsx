@@ -406,31 +406,25 @@ function jsonResponse(obj) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/45 backdrop-blur-xs transition-opacity animate-fade-in select-none">
-      <div className="w-full max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl h-[92dvh] sm:h-[86dvh] max-h-[860px] flex flex-col border border-slate-200/90 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in select-none">
+      <div className="w-full max-w-2xl bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl shadow-2xl h-[92dvh] sm:h-[86dvh] max-h-[860px] flex flex-col overflow-hidden animate-sheet-surface">
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-white shrink-0">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 bg-white/90 backdrop-blur-md shadow-[0_1px_0_rgba(0,0,0,0.04)] shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
               src={APP_LOGO_DATA}
               alt="Logo AYO DANUSAN!"
-              className="w-9 h-9 rounded-xl object-contain border border-black/[0.04] bg-white shrink-0 shadow-2xs"
+              className="w-7 h-7 rounded-lg object-contain bg-white shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
             />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-900 leading-tight">
-                  Riwayat Transaksi
-                </h2>
-                {apiUrl && (
-                  <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                    <span>Terhubung Sheet</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 truncate">
-                Catatan penjualan kasir &amp; arsip sinkronisasi
-              </p>
+            <div className="min-w-0 flex items-baseline gap-2">
+              <h2 className="text-[16px] font-semibold text-[#1C1C1E] tracking-[-0.015em] leading-tight whitespace-nowrap">
+                Riwayat Transaksi
+              </h2>
+              {apiUrl && (
+                <span className="hidden sm:inline text-xs text-[#636366] font-medium whitespace-nowrap">
+                  · Terhubung Sheet
+                </span>
+              )}
             </div>
           </div>
 
@@ -443,11 +437,11 @@ function jsonResponse(obj) {
                 loadData(true);
               }}
               disabled={isLoading}
-              className="pressable relative h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50"
+              className="pressable relative h-8 px-3 rounded-xl bg-[#F2F2F7] hover:bg-[#E5E5EA]/80 text-[#1C1C1E] text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
               title="Segarkan dari Google Sheet"
               aria-label="Segarkan Riwayat"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#636366] ${isLoading ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">{isLoading ? 'Memuat...' : 'Segarkan'}</span>
             </button>
 
@@ -458,10 +452,10 @@ function jsonResponse(obj) {
                 triggerHaptic('light');
                 setShowScriptHelper(!showScriptHelper);
               }}
-              className={`pressable relative h-9 px-2.5 rounded-xl border text-xs font-bold flex items-center gap-1 transition active:scale-95 ${
+              className={`pressable relative h-8 px-2.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors ${
                 showScriptHelper
-                  ? 'bg-blue-50 border-blue-200 text-[#007AFF]'
-                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+                  ? 'bg-[#EAF3FF] text-[#007AFF]'
+                  : 'bg-[#F2F2F7] hover:bg-[#E5E5EA]/80 text-[#1C1C1E]'
               }`}
               title="Panduan Kode Google Apps Script"
             >
@@ -476,10 +470,10 @@ function jsonResponse(obj) {
                 triggerHaptic('light');
                 onClose();
               }}
-              className="pressable relative w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95"
+              className="pressable relative w-8 h-8 rounded-full bg-[#E5E5EA]/80 hover:bg-[#E5E5EA] text-[#636366] hover:text-[#1C1C1E] flex items-center justify-center transition-colors before:content-[''] before:absolute before:-inset-1.5 before:z-10"
               aria-label="Tutup Riwayat"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.2]" />
             </button>
           </div>
         </div>
@@ -522,22 +516,22 @@ function jsonResponse(obj) {
         )}
 
         {/* Filter & Search Bar */}
-        <div className="px-4 sm:px-6 py-2.5 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between shrink-0">
+        <div className="px-4 sm:px-5 py-2.5 bg-white shadow-[0_1px_0_rgba(0,0,0,0.04)] flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between shrink-0">
           {/* Search Input */}
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-[#8E8E93] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari ID pesanan, menu, atau tanggal..."
-              className="w-full h-9 pl-8 pr-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+              className="w-full h-9 pl-8 pr-7 rounded-xl bg-[#F2F2F7] text-xs font-medium text-[#1C1C1E] placeholder:text-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25 focus:bg-white transition-colors"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8E8E93] hover:text-[#1C1C1E] text-xs"
               >
                 ×
               </button>
@@ -547,17 +541,17 @@ function jsonResponse(obj) {
           {/* Filter Pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0">
             {/* Payment Filters */}
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-black/5 shrink-0">
+            <div className="flex items-center bg-[#E5E5EA]/75 p-0.5 rounded-xl shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   triggerHaptic('selection');
                   setPaymentFilter('ALL');
                 }}
-                className={`px-2.5 py-1 rounded-[9px] text-[11px] font-bold transition ${
+                className={`pressable px-2.5 py-1 rounded-[9px] text-[11px] font-semibold transition-colors ${
                   paymentFilter === 'ALL'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#1C1C1E] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                    : 'text-[#636366] hover:text-[#1C1C1E]'
                 }`}
               >
                 Semua
@@ -568,10 +562,10 @@ function jsonResponse(obj) {
                   triggerHaptic('selection');
                   setPaymentFilter('QRIS');
                 }}
-                className={`px-2.5 py-1 rounded-[9px] text-[11px] font-bold flex items-center gap-1 transition ${
+                className={`pressable px-2.5 py-1 rounded-[9px] text-[11px] font-semibold flex items-center gap-1 transition-colors ${
                   paymentFilter === 'QRIS'
-                    ? 'bg-white text-[#007AFF] shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#007AFF] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                    : 'text-[#636366] hover:text-[#1C1C1E]'
                 }`}
               >
                 <QrCode className="w-3 h-3" />
@@ -583,10 +577,10 @@ function jsonResponse(obj) {
                   triggerHaptic('selection');
                   setPaymentFilter('Cash');
                 }}
-                className={`px-2.5 py-1 rounded-[9px] text-[11px] font-bold flex items-center gap-1 transition ${
+                className={`pressable px-2.5 py-1 rounded-[9px] text-[11px] font-semibold flex items-center gap-1 transition-colors ${
                   paymentFilter === 'Cash'
-                    ? 'bg-white text-emerald-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#34C759] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                    : 'text-[#636366] hover:text-[#1C1C1E]'
                 }`}
               >
                 <Banknote className="w-3 h-3" />
@@ -603,10 +597,10 @@ function jsonResponse(obj) {
                   cur === 'ALL' ? 'SYNCED' : cur === 'SYNCED' ? 'PENDING' : 'ALL'
                 );
               }}
-              className={`h-7 px-2 rounded-lg border text-[11px] font-bold flex items-center gap-1 shrink-0 transition ${
+              className={`pressable h-7 px-2.5 rounded-lg text-[11px] font-semibold flex items-center gap-1 shrink-0 transition-colors ${
                 statusFilter !== 'ALL'
-                  ? 'bg-blue-50 border-blue-200 text-blue-700'
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-[#EAF3FF] text-[#007AFF]'
+                  : 'bg-[#F2F2F7] text-[#636366] hover:text-[#1C1C1E]'
               }`}
               title="Filter status sinkronisasi"
             >
@@ -653,7 +647,7 @@ function jsonResponse(obj) {
               return (
                 <div
                   key={item.order_id}
-                  className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs hover:border-slate-300 transition overflow-hidden"
+                  className="rounded-2xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden"
                 >
                   {/* Card Header Row */}
                   <div
@@ -661,34 +655,34 @@ function jsonResponse(obj) {
                       triggerHaptic('light');
                       setExpandedOrderId(isExpanded ? null : item.order_id);
                     }}
-                    className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60 transition"
+                    className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60 transition-colors"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 font-medium">
-                        <span className="font-mono text-slate-900 font-semibold">
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs text-[#636366] font-medium">
+                        <span className="font-mono text-[#1C1C1E] font-semibold">
                           #{item.order_id}
                         </span>
-                        <span aria-hidden="true" className="text-slate-300">·</span>
-                        <span className={item.payment_method === 'QRIS' ? 'text-[#007AFF] font-medium' : 'text-slate-700 font-medium'}>
+                        <span aria-hidden="true" className="text-[#C7C7CC]">·</span>
+                        <span className={item.payment_method === 'QRIS' ? 'text-[#007AFF] font-medium' : 'text-[#1C1C1E] font-medium'}>
                           {item.payment_method}
                         </span>
-                        <span aria-hidden="true" className="text-slate-300">·</span>
+                        <span aria-hidden="true" className="text-[#C7C7CC]">·</span>
                         {item.is_local_pending ? (
-                          <span className="text-slate-600 font-medium flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-400" />
+                          <span className="text-[#636366] font-medium flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#8E8E93]" />
                             <span>Antrean</span>
                           </span>
                         ) : (
-                          <span className="text-slate-500 flex items-center gap-1">
+                          <span className="text-[#636366] flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3 text-[#007AFF]" />
                             <span>Sheet</span>
                           </span>
                         )}
                       </div>
 
-                      <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                      <div className="text-[11px] text-[#8E8E93] flex items-center gap-2">
                         <span>{item.timestamp}</span>
-                        <span>•</span>
+                        <span>·</span>
                         <span>{item.items_count || item.items.length} item</span>
                       </div>
                     </div>
@@ -696,17 +690,17 @@ function jsonResponse(obj) {
                     {/* Amount & Expand Toggle */}
                     <div className="flex items-center gap-3 shrink-0 text-right">
                       <div>
-                        <div className="text-sm font-extrabold text-slate-900 num">
+                        <div className="text-sm font-bold text-[#1C1C1E] num">
                           Rp {item.net_total.toLocaleString('id-ID')}
                         </div>
                         {item.discount_total > 0 && (
-                          <div className="text-[10px] font-bold text-rose-500 num">
+                          <div className="text-[10px] font-semibold text-[#FF3B30] num">
                             Hemat Rp {item.discount_total.toLocaleString('id-ID')}
                           </div>
                         )}
                       </div>
 
-                      <div className="text-slate-400">
+                      <div className="text-[#C7C7CC]">
                         {isExpanded ? (
                           <ChevronUp className="w-4 h-4" />
                         ) : (
@@ -718,34 +712,36 @@ function jsonResponse(obj) {
 
                   {/* Expanded Item Breakdown Details */}
                   {isExpanded && (
-                    <div className="px-3.5 pb-3.5 pt-1 border-t border-slate-100 bg-slate-50/50 space-y-2 text-xs">
-                      <div className="font-semibold text-slate-600 text-[11px] uppercase tracking-wider">
-                        Rincian Item Pembelian:
+                    <div className="px-3.5 pb-3.5 pt-2 bg-[#F2F2F7]/50 space-y-2 text-xs">
+                      <div className="h-px bg-slate-100 -mx-3.5 mb-2" />
+                      <div className="font-semibold text-[#636366] text-[11px]">
+                        Rincian Item Pembelian
                       </div>
 
-                      <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200/70">
+                      <div className="space-y-1 bg-white p-2.5 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
                         {item.items.map((it, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between text-xs py-0.5"
                           >
-                            <span className="text-slate-800 font-medium truncate pr-2">
+                            <span className="text-[#1C1C1E] font-medium truncate pr-2">
                               {it.qty}× {it.name}
                             </span>
-                            <span className="text-slate-600 num shrink-0 font-bold">
+                            <span className="text-[#636366] num shrink-0 font-semibold">
                               Rp {(it.qty * it.unit_price).toLocaleString('id-ID')}
                             </span>
                           </div>
                         ))}
 
                         {item.discount_total > 0 && (
-                          <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 text-rose-600 font-semibold">
+                          <div className="flex items-center justify-between text-xs pt-1.5 text-[#FF3B30] font-semibold">
                             <span>Diskon Promosi</span>
                             <span className="num">-Rp {item.discount_total.toLocaleString('id-ID')}</span>
                           </div>
                         )}
 
-                        <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200 font-extrabold text-slate-900">
+                        <div className="h-px bg-slate-100 my-1" />
+                        <div className="flex items-center justify-between text-xs pt-0.5 font-bold text-[#1C1C1E]">
                           <span>Total Pembayaran</span>
                           <span className="num">Rp {item.net_total.toLocaleString('id-ID')}</span>
                         </div>
@@ -754,8 +750,8 @@ function jsonResponse(obj) {
                       {/* Photo Proof Action / Preview */}
                       {hasPhoto && (
                         <div className="pt-1 flex items-center justify-between">
-                          <span className="text-[11px] font-medium text-slate-500">
-                            Bukti Transfer / Kasir:
+                          <span className="text-[11px] font-medium text-[#636366]">
+                            Bukti Transfer / Kasir
                           </span>
 
                           {item.photo_base64 ? (
@@ -768,7 +764,7 @@ function jsonResponse(obj) {
                                   onViewPhoto(item.photo_base64);
                                 }
                               }}
-                              className="pressable px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center gap-1 transition"
+                              className="pressable px-2.5 py-1 rounded-lg bg-[#EAF3FF] hover:bg-blue-100 text-[#007AFF] text-[11px] font-semibold flex items-center gap-1 transition-colors"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               <span>Lihat Foto Bukti</span>
@@ -779,7 +775,7 @@ function jsonResponse(obj) {
                               target="_blank"
                               rel="noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              className="pressable px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-bold flex items-center gap-1 transition"
+                              className="pressable px-2.5 py-1 rounded-lg bg-[#EAF3FF] hover:bg-blue-100 text-[#007AFF] text-[11px] font-semibold flex items-center gap-1 transition-colors"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                               <span>Buka Google Drive</span>
@@ -793,16 +789,16 @@ function jsonResponse(obj) {
               );
             })
           ) : (
-            <div className="py-16 flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+            <div className="py-16 flex flex-col items-center justify-center text-center p-6 text-[#8E8E93] space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] flex items-center justify-center text-[#8E8E93]">
                 <Receipt className="w-6 h-6 stroke-[1.8]" />
               </div>
-              <p className="text-sm font-bold text-slate-700">
+              <p className="text-sm font-semibold text-[#1C1C1E]">
                 {searchQuery || paymentFilter !== 'ALL' || statusFilter !== 'ALL'
                   ? 'Tidak ada transaksi yang cocok'
                   : 'Belum Ada Riwayat Transaksi'}
               </p>
-              <p className="text-xs text-slate-400 max-w-xs">
+              <p className="text-xs text-[#636366] max-w-xs">
                 {searchQuery
                   ? 'Coba ganti kata kunci pencarian atau reset filter'
                   : 'Setiap transaksi yang disimpan kasir akan otomatis tercatat di sini dan tersinkron ke Google Sheet.'}
@@ -815,7 +811,7 @@ function jsonResponse(obj) {
                     setPaymentFilter('ALL');
                     setStatusFilter('ALL');
                   }}
-                  className="mt-2 text-xs font-bold text-[#007AFF] hover:underline"
+                  className="mt-2 text-xs font-semibold text-[#007AFF] hover:underline"
                 >
                   Reset Semua Filter
                 </button>
@@ -825,9 +821,9 @@ function jsonResponse(obj) {
         </div>
 
         {/* Footer Bar */}
-        <div className="p-3.5 sm:p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-2 shrink-0">
-          <div className="text-xs text-slate-500 truncate">
-            Menampilkan <span className="font-bold text-slate-800 num">{filteredItems.length}</span> transaksi
+        <div className="p-3.5 sm:p-4 pb-[calc(0.875rem+env(safe-area-inset-bottom,0px))] bg-white/90 backdrop-blur-md shadow-[0_-1px_0_rgba(0,0,0,0.04)] flex items-center justify-between gap-2 shrink-0">
+          <div className="text-xs text-[#636366] truncate">
+            Menampilkan <span className="font-semibold text-[#1C1C1E] num">{filteredItems.length}</span> transaksi
           </div>
 
           <div className="flex items-center gap-2">
@@ -836,12 +832,12 @@ function jsonResponse(obj) {
                 href={apiUrl.replace('/exec', '/edit')}
                 target="_blank"
                 rel="noreferrer"
-                className="pressable hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+                className="pressable hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#F2F2F7] hover:bg-[#E5E5EA]/80 text-[#1C1C1E] text-xs font-semibold transition-colors"
                 title="Buka Spreadsheet di Google Sheet"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <FileSpreadsheet className="w-3.5 h-3.5 text-[#34C759]" />
                 <span>Buka Google Sheet</span>
-                <ExternalLink className="w-3 h-3 text-slate-400" />
+                <ExternalLink className="w-3 h-3 text-[#8E8E93]" />
               </a>
             )}
 
@@ -851,7 +847,7 @@ function jsonResponse(obj) {
                 triggerHaptic('light');
                 onClose();
               }}
-              className="pressable px-5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition shadow-xs"
+              className="pressable px-5 py-2 rounded-xl bg-[#1C1C1E] hover:bg-black text-white text-xs font-semibold transition-colors"
             >
               Tutup
             </button>

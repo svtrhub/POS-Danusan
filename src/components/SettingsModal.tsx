@@ -14,7 +14,6 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Lock,
-  Sparkles,
   ExternalLink,
 } from 'lucide-react';
 import { Product, TeamDivision } from '../types';
@@ -22,6 +21,7 @@ import { triggerHaptic } from '../utils/haptics';
 import { DEFAULT_QRIS_DATA } from '../assets/defaultQrisData';
 import { APP_LOGO_DATA } from '../assets/logo';
 import { DEFAULT_MENU_SHEET_ID } from '../services/syncEngine';
+import { getDefaultActivationLink } from '../services/activationLinks';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,15 +30,16 @@ interface SettingsModalProps {
   customQrisImage?: string;
   isBatterySaver?: boolean;
   team?: TeamDivision;
-  menuSheetId?: string;
+  getActivationUrlForTeam?: (team: TeamDivision) => string;
+  getDefaultUrlForTeam?: (team: TeamDivision) => string;
+  getCachedMenuForTeam?: (team: TeamDivision) => Product[] | null;
   onClose: () => void;
-  onSave: (newUrl: string, updatedProducts: Product[]) => Promise<void>;
+  onSave: (newUrl: string, updatedProducts: Product[], targetTeam?: TeamDivision) => Promise<void>;
   onTeamChange?: (team: TeamDivision) => void;
-  onMenuSheetIdChange?: (sheetInput: string) => void;
   onFetchMenu?: (
     team: TeamDivision,
-    sheetId?: string,
-    existingProducts?: Product[]
+    existingProducts?: Product[],
+    preserveCustom?: boolean
   ) => Promise<Product[]>;
   onOpenHistory?: () => void;
   onSaveQrisImage?: (base64: string) => void;
@@ -55,11 +56,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   customQrisImage,
   isBatterySaver = false,
   team = 'Team A',
-  menuSheetId = DEFAULT_MENU_SHEET_ID,
+  getActivationUrlForTeam,
+  getDefaultUrlForTeam,
+  getCachedMenuForTeam,
   onClose,
   onSave,
   onTeamChange,
-  onMenuSheetIdChange,
   onFetchMenu,
   onOpenHistory,
   onSaveQrisImage,
@@ -68,52 +70,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [urlInput, setUrlInput] = useState(apiUrl);
   const [selectedTeam, setSelectedTeam] = useState<TeamDivision>(team);
-  const [sheetIdInput, setSheetIdInput] = useState<string>(menuSheetId || DEFAULT_MENU_SHEET_ID);
-  const [showSheetConfig, setShowSheetConfig] = useState(false);
   const [isSyncingMenu, setIsSyncingMenu] = useState(false);
   const [editorProducts, setEditorProducts] = useState<Product[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const wasOpenRef = React.useRef(false);
+  const activeTeamRequestRef = React.useRef<TeamDivision>(team);
 
-  // Initialize editor list and props when modal opens
+  const resolveTeamUrl = (targetTeam: TeamDivision) =>
+    getActivationUrlForTeam ? getActivationUrlForTeam(targetTeam) : getDefaultActivationLink(targetTeam);
+
+  const resolveDefaultTeamUrl = (targetTeam: TeamDivision) =>
+    getDefaultUrlForTeam ? getDefaultUrlForTeam(targetTeam) : getDefaultActivationLink(targetTeam);
+
+  // Initialize editor state only when modal transitions from closed -> open
   React.useEffect(() => {
-    if (isOpen) {
-      setUrlInput(apiUrl);
+    if (isOpen && !wasOpenRef.current) {
+      const initialUrl = apiUrl || resolveTeamUrl(team);
+      setUrlInput(initialUrl);
       setSelectedTeam(team);
-      setSheetIdInput(menuSheetId || DEFAULT_MENU_SHEET_ID);
+      activeTeamRequestRef.current = team;
       setEditorProducts(JSON.parse(JSON.stringify(products)));
       setFeedback(null);
     }
-  }, [isOpen, apiUrl, team, menuSheetId, products]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, apiUrl, team, products]);
 
   if (!isOpen) return null;
 
   const handleSelectTeam = async (newTeam: TeamDivision) => {
     triggerHaptic('light');
+    activeTeamRequestRef.current = newTeam;
     setSelectedTeam(newTeam);
+
+    // Instantly switch the activation link and cached menu for the chosen team
+    const nextUrl = resolveTeamUrl(newTeam);
+    setUrlInput(nextUrl);
+
+    const cachedMenu = getCachedMenuForTeam ? getCachedMenuForTeam(newTeam) : null;
+    if (cachedMenu && cachedMenu.length > 0) {
+      setEditorProducts(JSON.parse(JSON.stringify(cachedMenu)));
+    }
+
     if (onTeamChange) {
       onTeamChange(newTeam);
     }
 
-    // Auto fetch menu matrix for newly selected team if fetcher provided
+    setFeedback({
+      type: 'success',
+      message: `${newTeam} aktif · Link aktivasi diperbarui`,
+    });
+
     if (onFetchMenu) {
       setIsSyncingMenu(true);
       try {
-        const fetched = await onFetchMenu(newTeam, sheetIdInput.trim(), editorProducts);
-        if (fetched && fetched.length > 0) {
+        const fetched = await onFetchMenu(newTeam, cachedMenu || [], false);
+        if (activeTeamRequestRef.current !== newTeam) return;
+        if (fetched) {
           setEditorProducts(fetched);
           setFeedback({
             type: 'success',
-            message: `✓ Menu ${newTeam} berhasil dimuat (${fetched.length} item)`,
+            message:
+              fetched.length > 0
+                ? `${newTeam} aktif · Link & menu dimuat (${fetched.length} item)`
+                : `${newTeam} aktif · Menu kosong di Sheet`,
           });
           triggerHaptic('success');
         }
       } catch (err: unknown) {
+        if (activeTeamRequestRef.current !== newTeam) return;
         const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
-        setFeedback({ type: 'error', message: msg });
+        setFeedback({
+          type: 'error',
+          message: `Link ${newTeam} aktif, namun gagal sinkron menu: ${msg}`,
+        });
         triggerHaptic('warning');
       } finally {
-        setIsSyncingMenu(false);
+        if (activeTeamRequestRef.current === newTeam) {
+          setIsSyncingMenu(false);
+        }
       }
     }
   };
@@ -122,15 +157,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     triggerHaptic('medium');
     if (!onFetchMenu) return;
 
+    const targetTeam = selectedTeam;
+    activeTeamRequestRef.current = targetTeam;
     setIsSyncingMenu(true);
     setFeedback(null);
     try {
-      const fetched = await onFetchMenu(selectedTeam, sheetIdInput.trim(), editorProducts);
+      const fetched = await onFetchMenu(targetTeam, editorProducts, true);
+      if (activeTeamRequestRef.current !== targetTeam) return;
       if (fetched && fetched.length > 0) {
         setEditorProducts(fetched);
         setFeedback({
           type: 'success',
-          message: `✓ Menu ${selectedTeam} tersinkron (${fetched.length} item)`,
+          message: `Menu ${targetTeam} tersinkron (${fetched.length} item)`,
         });
         triggerHaptic('success');
       } else {
@@ -140,11 +178,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         });
       }
     } catch (err: unknown) {
+      if (activeTeamRequestRef.current !== targetTeam) return;
       const msg = err instanceof Error ? err.message : 'Gagal sinkron menu dari Sheet';
       setFeedback({ type: 'error', message: msg });
       triggerHaptic('warning');
     } finally {
-      setIsSyncingMenu(false);
+      if (activeTeamRequestRef.current === targetTeam) {
+        setIsSyncingMenu(false);
+      }
     }
   };
 
@@ -177,7 +218,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (onSaveQrisImage) {
           onSaveQrisImage(ev.target.result);
           triggerHaptic('success');
-          setFeedback({ type: 'success', message: 'Gambar QRIS (WebP) berhasil disimpan!' });
+          setFeedback({ type: 'success', message: 'Gambar QRIS berhasil disimpan' });
         }
       }
     };
@@ -200,10 +241,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsSaving(true);
     setFeedback(null);
 
-    if (sheetIdInput.trim() !== menuSheetId && onMenuSheetIdChange) {
-      onMenuSheetIdChange(sheetIdInput.trim());
-    }
-
     if (selectedTeam !== team && onTeamChange) {
       onTeamChange(selectedTeam);
     }
@@ -218,12 +255,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }));
 
     try {
-      await onSave(urlInput.trim(), cleaned.length > 0 ? cleaned : products);
+      await onSave(urlInput.trim(), cleaned.length > 0 ? cleaned : products, selectedTeam);
       triggerHaptic('success');
-      setFeedback({ type: 'success', message: 'Pengaturan & Menu berhasil disimpan!' });
+      setFeedback({ type: 'success', message: 'Pengaturan berhasil disimpan' });
       setTimeout(() => {
         onClose();
-      }, 700);
+      }, 600);
     } catch (err: unknown) {
       triggerHaptic('warning');
       const msg = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan';
@@ -235,24 +272,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">
-      {/* Modal Surface */}
-      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col border border-slate-200/80 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100">
+      {/* Apple Inset-Grouped Sheet Surface */}
+      <div className="w-full max-w-lg bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] flex flex-col overflow-hidden animate-sheet-surface">
+        {/* Translucent Header */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 bg-white/90 backdrop-blur-md shadow-[0_1px_0_rgba(0,0,0,0.04)] shrink-0">
           <div className="flex items-center gap-2.5">
             <img
               src={APP_LOGO_DATA}
               alt="Logo AYO DANUSAN!"
-              className="w-7 h-7 rounded-lg object-contain border border-black/[0.04] bg-white shrink-0"
+              className="w-7 h-7 rounded-lg object-contain bg-white shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
             />
-            <div>
-              <h2 className="text-base font-bold text-slate-900 leading-tight">
-                Pengaturan &amp; Menu
-              </h2>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Sinkronisasi menu divisi &amp; kasir
-              </p>
-            </div>
+            <h2 className="text-[16px] font-semibold text-[#1C1C1E] tracking-[-0.015em]">
+              Pengaturan &amp; Menu
+            </h2>
           </div>
           <button
             type="button"
@@ -260,58 +292,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               triggerHaptic('light');
               onClose();
             }}
-            className="relative w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation"
+            className="pressable relative w-8 h-8 rounded-full bg-[#E5E5EA]/80 hover:bg-[#E5E5EA] text-[#636366] hover:text-[#1C1C1E] flex items-center justify-center transition-colors before:content-[''] before:absolute before:-inset-2 before:z-10"
+            aria-label="Tutup Pengaturan"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 stroke-[2.2]" />
           </button>
         </div>
 
-        {/* Body Content */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
-          {/* Status Feedback banner */}
+        {/* Scrollable Body (Borderless Floating White Cards on #F2F2F7) */}
+        <div className="p-3.5 sm:p-4 overflow-y-auto space-y-3.5">
+          {/* Status Feedback Banner */}
           {feedback && (
             <div
               className={`p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
                 feedback.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  ? 'bg-emerald-50 text-emerald-800'
+                  : 'bg-rose-50 text-rose-800'
               }`}
             >
               {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-[#34C759] shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-[#FF3B30] shrink-0" />
               )}
               <span>{feedback.message}</span>
             </div>
           )}
 
-          {/* Section: Divisi Kasir (Team Segmented Control) */}
-          <div className="space-y-2 pb-3 border-b border-black/[0.06]">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+          {/* Card 1: Divisi Penjualan */}
+          <div className="bg-white rounded-2xl p-3.5 space-y-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[13px] font-semibold text-[#1C1C1E] flex items-center gap-1.5 tracking-[-0.01em]">
                 <FileSpreadsheet className="w-3.5 h-3.5 text-[#007AFF]" />
-                <span>Divisi Penjualan (Sheet Master)</span>
+                <span>Divisi Penjualan</span>
               </label>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <a
-                  href={`https://docs.google.com/spreadsheets/d/${sheetIdInput}/edit`}
+                  href={`https://docs.google.com/spreadsheets/d/${DEFAULT_MENU_SHEET_ID}/edit`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-[#007AFF] transition-colors touch-manipulation"
-                  title="Buka Spreadsheet Master di Google Sheets"
+                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-[#8E8E93] hover:text-[#007AFF] transition-colors touch-manipulation"
                 >
                   <span>Buka Sheet</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                  <ExternalLink className="w-3 h-3" />
                 </a>
-                <span className="text-slate-200">|</span>
+                <span className="text-slate-200 text-xs">|</span>
                 <button
                   type="button"
                   onClick={handleSyncMenuClick}
                   disabled={isSyncingMenu}
-                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:text-[#005bb5] active:scale-95 disabled:opacity-50 touch-manipulation"
-                  title="Tarik daftar menu terbaru dari Google Sheet Master"
+                  className="pressable inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:text-[#005bb5] disabled:opacity-50 transition-colors"
                 >
                   <RefreshCw className={`w-3 h-3 ${isSyncingMenu ? 'animate-spin' : ''}`} />
                   <span>{isSyncingMenu ? 'Menyinkronkan...' : 'Sinkron Sheet'}</span>
@@ -319,8 +350,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
-            {/* iOS Style Segmented Control */}
-            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl gap-1">
+            {/* Apple UISegmentedControl (Zero border/ring, pure elevation) */}
+            <div className="grid grid-cols-3 p-0.5 bg-[#E5E5EA]/75 rounded-[11px] gap-0.5">
               {TEAMS.map((t) => {
                 const isActive = selectedTeam === t;
                 return (
@@ -328,10 +359,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     key={t}
                     type="button"
                     onClick={() => handleSelectTeam(t)}
-                    className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all duration-150 touch-manipulation ${
+                    className={`py-1.5 px-3 rounded-[9px] text-xs font-semibold transition-[color,background-color,box-shadow] duration-150 touch-manipulation ${
                       isActive
-                        ? 'bg-white text-slate-900 shadow-xs ring-1 ring-black/[0.04]'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-white text-[#1C1C1E] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                        : 'text-[#636366] hover:text-[#1C1C1E]'
                     }`}
                   >
                     {t}
@@ -339,128 +370,109 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 );
               })}
             </div>
-
-            {/* Sheet Link Info & Optional ID config */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setShowSheetConfig(!showSheetConfig)}
-                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 inline-flex items-center gap-1"
-              >
-                <span>{showSheetConfig ? 'Sembunyikan ID / Link Sheet' : 'Atur ID / Link Spreadsheet Master'}</span>
-                <ChevronRight className={`w-3 h-3 transition-transform ${showSheetConfig ? 'rotate-90' : ''}`} />
-              </button>
-
-              {showSheetConfig && (
-                <div className="mt-2 space-y-2 bg-slate-50 p-2.5 rounded-xl border border-black/[0.06]">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-medium">URL atau ID Google Sheet:</span>
-                    <button
-                      type="button"
-                      onClick={() => setSheetIdInput(DEFAULT_MENU_SHEET_ID)}
-                      className="text-[#007AFF] hover:underline text-[10px]"
-                    >
-                      Reset Bawaan
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={sheetIdInput}
-                    onChange={(e) => setSheetIdInput(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/.../edit atau ID Sheet"
-                    className="w-full h-8 px-2.5 rounded-lg bg-white border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
-                  />
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                    💡 <strong>Tips:</strong> Pastikan spreadsheet kamu dibagikan dengan akses <em>&quot;Siapa saja yang memiliki link sebagai Pelihat (Viewer)&quot;</em> agar data dapat dibaca oleh POS.
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Section: Open Transaction History */}
-          {onOpenHistory && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenHistory();
-              }}
-              className="pressable w-full py-3 px-1 border-b border-black/[0.06] text-left flex items-center justify-between gap-3 transition hover:bg-black/[0.02]"
-            >
+          {/* Card 2: Grouped Actions (Riwayat & Mode Hemat Baterai) */}
+          <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            {onOpenHistory && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenHistory();
+                  }}
+                  className="pressable w-full px-3.5 py-3 text-left flex items-center justify-between gap-3 transition hover:bg-slate-50/70 active:bg-slate-100/70"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-[9px] bg-[#F2F2F7] text-[#1C1C1E] flex items-center justify-center shrink-0">
+                      <Receipt className="w-4 h-4 stroke-[1.8]" />
+                    </div>
+                    <span className="text-[14px] font-medium text-[#1C1C1E] truncate">
+                      Riwayat Transaksi
+                    </span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#C7C7CC] shrink-0" />
+                </button>
+                <div className="ml-14 mr-3.5 h-px bg-slate-100" />
+              </>
+            )}
+
+            <div className="px-3.5 py-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                  <Receipt className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-[9px] bg-[#F2F2F7] text-[#1C1C1E] flex items-center justify-center shrink-0">
+                  <ZapOff className="w-4 h-4 stroke-[1.8]" />
                 </div>
-                <span className="text-sm font-medium text-slate-900 truncate">
-                  Riwayat Transaksi
+                <span className="text-[14px] font-medium text-[#1C1C1E]">
+                  Mode Hemat Baterai
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-xs font-medium text-slate-400 shrink-0">
-                <ChevronRight className="w-4 h-4" />
-              </div>
-            </button>
-          )}
 
-          {/* Section: Mode Hemat Baterai */}
-          <div className="py-3 px-1 border-b border-black/[0.06] flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                <ZapOff className="w-4 h-4" />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(isBatterySaver)}
+                onClick={() => {
+                  triggerHaptic('medium');
+                  if (onToggleBatterySaver) {
+                    onToggleBatterySaver(!isBatterySaver);
+                  }
+                }}
+                className={`relative inline-flex h-[26px] w-[46px] shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-180 ease-[cubic-bezier(0.23,1,0.32,1)] focus:outline-none touch-manipulation ${
+                  isBatterySaver ? 'bg-[#34C759]' : 'bg-[#E5E5EA]'
+                }`}
+                aria-label="Toggle Mode Hemat Baterai"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-[22px] w-[22px] transform rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.16)] transition-transform duration-180 ease-[cubic-bezier(0.23,1,0.32,1)] ${
+                    isBatterySaver ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Card 3: Integrasi & Pembayaran */}
+          <div className="bg-white rounded-2xl p-3.5 space-y-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[13px] font-semibold text-[#1C1C1E] tracking-[-0.01em]">
+                  URL Apps Script
+                </label>
+                {urlInput.trim() !== resolveDefaultTeamUrl(selectedTeam) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      const defUrl = resolveDefaultTeamUrl(selectedTeam);
+                      setUrlInput(defUrl);
+                      setFeedback({
+                        type: 'success',
+                        message: `Link aktivasi ${selectedTeam} dikembalikan ke default`,
+                      });
+                    }}
+                    className="pressable text-[11px] font-semibold text-[#007AFF] hover:text-[#005bb5] transition-colors touch-manipulation"
+                  >
+                    Reset Default
+                  </button>
+                )}
               </div>
-              <span className="text-sm font-medium text-slate-900">
-                Mode Hemat Baterai
-              </span>
+              <input
+                type="url"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="https://script.google.com/macros/s/.../exec"
+                className="w-full h-10 px-3 rounded-xl bg-[#F2F2F7] text-xs font-mono text-[#1C1C1E] placeholder:text-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25 focus:bg-white transition"
+              />
             </div>
 
-            {/* Apple iOS Style Switch Toggle */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={Boolean(isBatterySaver)}
-              onClick={() => {
-                triggerHaptic('medium');
-                if (onToggleBatterySaver) {
-                  onToggleBatterySaver(!isBatterySaver);
-                }
-              }}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:ring-offset-2 touch-manipulation ${
-                isBatterySaver ? 'bg-[#007AFF]' : 'bg-slate-200'
-              }`}
-              title="Mode Hemat Baterai"
-              aria-label="Toggle Mode Hemat Baterai"
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                  isBatterySaver ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-[#1C1C1E] tracking-[-0.01em]">
+                Gambar QRIS
+              </label>
 
-          {/* Section: URL Apps Script (Backend Pengiriman Transaksi) */}
-          <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-medium text-slate-500">
-              URL Apps Script (Tujuan Transaksi)
-            </label>
-            <input
-              type="url"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
-            />
-          </div>
-
-          {/* Section: QRIS Merchant */}
-          <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-medium text-slate-500">
-              Gambar QRIS
-            </label>
-
-            <div className="p-2.5 border border-black/[0.06] rounded-xl bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-16 bg-white border border-black/[0.06] rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-1">
+              <div className="p-2.5 rounded-xl bg-[#F2F2F7]/75 flex items-center gap-3">
+                <div className="w-11 h-14 bg-white rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-1 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                   <img
                     src={customQrisImage || DEFAULT_QRIS_DATA}
                     alt="QRIS"
@@ -469,8 +481,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 <div className="flex-1 space-y-1.5">
-                  <label className="cursor-pointer select-none pressable w-full h-8 px-3 rounded-lg bg-white hover:bg-slate-50 border border-black/[0.08] text-xs font-medium text-slate-700 flex items-center justify-center gap-1.5 transition active:scale-98">
-                    <Upload className="w-3.5 h-3.5 text-[#007AFF]" />
+                  <label className="cursor-pointer select-none pressable w-full h-9 px-3 rounded-xl bg-white hover:bg-slate-50 text-xs font-semibold text-[#007AFF] flex items-center justify-center gap-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
                     <span>Ganti Gambar QRIS</span>
                     <input
                       type="file"
@@ -488,7 +500,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onResetQrisImage();
                         setFeedback({ type: 'success', message: 'Kembali ke QRIS bawaan.' });
                       }}
-                      className="pressable w-full h-7 px-2 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 transition"
+                      className="pressable w-full h-7 px-2 rounded-lg text-[11px] font-medium text-[#8E8E93] hover:text-[#1C1C1E] flex items-center justify-center gap-1 transition"
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>Kembalikan ke Bawaan</span>
@@ -499,26 +511,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Menu Editor & Differentiation */}
-          <div className="space-y-2.5 pt-1">
+          {/* Card 4: Daftar Menu & Harga */}
+          <div className="bg-white rounded-2xl p-3.5 space-y-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             <div className="flex items-center justify-between">
-              <div>
-                <label className="text-xs font-bold text-slate-900">
-                  Daftar Menu &amp; Harga ({selectedTeam})
-                </label>
-                <p className="text-[10px] text-slate-400">
-                  Item Sheet terkunci namanya; item Custom bebas diubah.
-                </p>
-              </div>
-              <span className="text-xs text-slate-400 font-mono tabular-nums">
+              <label className="text-[13px] font-semibold text-[#1C1C1E] tracking-[-0.01em]">
+                Daftar Menu &amp; Harga
+              </label>
+              <span className="text-xs text-[#8E8E93] font-mono tabular-nums">
                 {editorProducts.length} item
               </span>
             </div>
 
-            <div className="space-y-2 max-h-[300px] overflow-y-auto px-0.5">
+            <div className="space-y-2 max-h-[280px] overflow-y-auto">
               {editorProducts.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  Belum ada menu untuk divisi ini. Klik tombol <strong>Sinkron Sheet</strong> di atas atau tambah menu custom di bawah.
+                <div className="p-4 text-center text-xs text-[#8E8E93] bg-[#F2F2F7] rounded-xl">
+                  Belum ada menu. Ketuk Sinkron Sheet atau tambah menu custom.
                 </div>
               ) : (
                 editorProducts.map((item: Product, idx: number) => {
@@ -526,9 +533,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   return (
                     <div
                       key={item.id || idx}
-                      className="grid grid-cols-[1fr_96px_36px] gap-1.5 items-center w-full"
+                      className="grid grid-cols-[1fr_96px_30px] gap-1.5 items-center w-full"
                     >
-                      {/* Name input with tag */}
+                      {/* Name input with subtle tag */}
                       <div className="relative min-w-0 flex items-center">
                         <input
                           type="text"
@@ -536,26 +543,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           readOnly={!isCustom}
                           onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
                           placeholder="Nama Barang"
-                          className={`min-w-0 w-full h-9 pl-2.5 pr-14 rounded-lg border text-xs font-medium text-slate-800 transition focus:outline-none ${
+                          className={`min-w-0 w-full h-9 pl-3 pr-14 rounded-xl text-xs font-medium text-[#1C1C1E] transition focus:outline-none ${
                             !isCustom
-                              ? 'bg-slate-100/70 border-slate-200 cursor-default select-none'
-                              : 'bg-white border-black/[0.08] focus:ring-1 focus:ring-[#007AFF]'
+                              ? 'bg-[#F2F2F7] cursor-default select-none'
+                              : 'bg-[#F2F2F7]/70 focus:bg-white focus:ring-2 focus:ring-[#007AFF]/25'
                           }`}
                         />
                         <span
-                          className={`absolute right-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 pointer-events-none ${
+                          className={`absolute right-2 px-1.5 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wider shrink-0 pointer-events-none ${
                             !isCustom
-                              ? 'bg-slate-200 text-slate-600'
-                              : 'bg-amber-100 text-amber-700'
+                              ? 'bg-slate-200/70 text-[#8E8E93]'
+                              : 'bg-amber-100/80 text-amber-700'
                           }`}
                         >
                           {isCustom ? 'Custom' : 'Sheet'}
                         </span>
                       </div>
 
-                      {/* Price input (Always editable by cashier) */}
+                      {/* Price input */}
                       <div className="relative min-w-0 w-[96px] shrink-0">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-[#8E8E93] font-medium">
                           Rp
                         </span>
                         <input
@@ -563,26 +570,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           value={item.price}
                           onChange={(e) => handleFieldChange(idx, 'price', e.target.value)}
                           placeholder="Harga"
-                          className="h-9 pl-7 pr-2 w-full rounded-lg bg-slate-50 border border-black/[0.08] text-xs font-medium text-right text-slate-800 font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-[#007AFF] focus:bg-white transition"
+                          className="h-9 pl-7 pr-2.5 w-full rounded-xl bg-[#F2F2F7] text-xs font-medium text-right text-[#1C1C1E] font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25 focus:bg-white transition"
                         />
                       </div>
 
-                      {/* Action (Delete for custom, Lock indicator for sheet) */}
+                      {/* Action */}
                       {isCustom ? (
                         <button
                           type="button"
                           onClick={() => handleRemoveRow(idx)}
-                          className="pressable w-8 h-9 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition active:scale-90 touch-manipulation"
+                          className="pressable w-7 h-9 rounded-lg hover:bg-rose-50 text-[#8E8E93] hover:text-[#FF3B30] flex items-center justify-center shrink-0 transition-colors"
                           title="Hapus Menu Custom"
                           aria-label="Hapus Menu Custom"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       ) : (
-                        <div
-                          className="w-8 h-9 flex items-center justify-center text-slate-300"
-                          title="Menu bawaan Sheet Master (tidak dapat dihapus satuan, nama dikunci)"
-                        >
+                        <div className="w-7 h-9 flex items-center justify-center text-[#C7C7CC]">
                           <Lock className="w-3.5 h-3.5" />
                         </div>
                       )}
@@ -592,27 +596,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
 
-            {/* Add Custom Row Button */}
             <button
               type="button"
               onClick={handleAddCustomRow}
-              className="pressable w-full h-9 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-[#007AFF] text-xs font-medium flex items-center justify-center gap-1.5 transition active:scale-98 touch-manipulation"
+              className="pressable w-full h-9 rounded-xl bg-[#F2F2F7] hover:bg-[#E5E5EA]/80 text-[#007AFF] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Tambah Menu Mendadak (Custom)</span>
+              <Plus className="w-3.5 h-3.5 stroke-[2.2]" />
+              <span>Tambah Menu Custom</span>
             </button>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-black/[0.06] flex items-center justify-end shrink-0">
+        {/* Translucent Footer Actions */}
+        <div className="p-3.5 sm:p-4 pb-[calc(0.875rem+env(safe-area-inset-bottom,0px))] bg-white/90 backdrop-blur-md shadow-[0_-1px_0_rgba(0,0,0,0.04)] flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] active:scale-[0.985] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs transition disabled:opacity-50 touch-manipulation"
+            className="pressable w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           >
-            <Save className="w-3.5 h-3.5" />
+            <Save className="w-4 h-4" />
             <span>{isSaving ? 'Menyimpan...' : 'Simpan & Terapkan'}</span>
           </button>
         </div>

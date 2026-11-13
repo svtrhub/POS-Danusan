@@ -12,21 +12,37 @@ export function useSyncEngine() {
     return unsubscribe;
   }, []);
 
-  const setApiUrl = useCallback((url: string) => {
-    syncEngine.setApiUrl(url);
+  const setApiUrl = useCallback((url: string, targetTeam?: TeamDivision) => {
+    syncEngine.setApiUrl(url, targetTeam);
   }, []);
 
   const setTeam = useCallback((team: TeamDivision) => {
     syncEngine.setTeam(team);
   }, []);
 
-  const setMenuSheetId = useCallback((sheetInput: string) => {
-    syncEngine.setMenuSheetId(sheetInput);
+  const getActivationUrlForTeam = useCallback((team: TeamDivision) => {
+    return syncEngine.getActivationUrlForTeam(team);
+  }, []);
+
+  const getDefaultUrlForTeam = useCallback((team: TeamDivision) => {
+    return syncEngine.getDefaultUrlForTeam(team);
+  }, []);
+
+  const getCachedMenuForTeam = useCallback((team: TeamDivision) => {
+    return syncEngine.getCachedMenuForTeam(team);
+  }, []);
+
+  const saveCachedMenuForTeam = useCallback((team: TeamDivision, products: Product[]) => {
+    syncEngine.saveCachedMenuForTeam(team, products);
   }, []);
 
   const fetchMenuFromCentralSheet = useCallback(
-    async (teamOverride?: TeamDivision, sheetInputOverride?: string, existingProducts?: Product[], preserveCustom = true) => {
-      return syncEngine.fetchMenuFromCentralSheet(teamOverride, sheetInputOverride, existingProducts, preserveCustom);
+    async (teamOverride?: TeamDivision, existingProducts?: Product[], preserveCustom = true) => {
+      const fetched = await syncEngine.fetchMenuFromCentralSheet(teamOverride, existingProducts, preserveCustom);
+      if (fetched && fetched.length > 0) {
+        syncEngine.saveCachedMenuForTeam(teamOverride || syncEngine.getState().team, fetched);
+      }
+      return fetched;
     },
     []
   );
@@ -67,11 +83,13 @@ export function useSyncEngine() {
     hasSyncError: state.hasSyncError,
     apiUrl: state.apiUrl,
     team: state.team,
-    menuSheetId: state.menuSheetId,
     isBatterySaver: state.isBatterySaver,
     setApiUrl,
     setTeam,
-    setMenuSheetId,
+    getActivationUrlForTeam,
+    getDefaultUrlForTeam,
+    getCachedMenuForTeam,
+    saveCachedMenuForTeam,
     fetchMenuFromCentralSheet,
     parseMenuFromCsv,
     setBatterySaver,

@@ -20,6 +20,7 @@ interface HeaderProps {
   isInstallable: boolean;
   isOnline?: boolean;
   isBatterySaver?: boolean;
+  isScrolled?: boolean;
   team?: TeamDivision;
   onSyncClick: () => void;
   onResetCart: () => void;
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   isInstallable,
   isOnline = true,
   isBatterySaver = false,
+  isScrolled = false,
   team = 'Team A',
   onSyncClick,
   onResetCart,
@@ -44,36 +46,36 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPWAInfo,
 }) => {
   let syncLabel = 'Tersinkron';
-  let dotColor = 'bg-slate-400';
+  let dotColor = 'bg-[#8E8E93]';
   const isFullySynced = isOnline && Boolean(apiUrl) && !hasSyncError && !isSyncing && queueLength === 0;
 
   if (!isOnline) {
     if (queueLength > 0) {
       syncLabel = `Offline (${queueLength})`;
-      dotColor = 'bg-slate-500';
+      dotColor = 'bg-[#636366]';
     } else {
       syncLabel = 'Offline';
-      dotColor = 'bg-slate-400';
+      dotColor = 'bg-[#8E8E93]';
     }
   } else if (!apiUrl) {
     syncLabel = queueLength > 0 ? `Atur URL (${queueLength})` : 'Atur URL';
-    dotColor = 'bg-rose-500';
+    dotColor = 'bg-[#FF3B30]';
   } else if (hasSyncError) {
     syncLabel = `Coba Lagi (${queueLength})`;
-    dotColor = 'bg-rose-500';
+    dotColor = 'bg-[#FF3B30]';
   } else if (isSyncing) {
     if (pendingTextCount > 0) {
-      syncLabel = `Sync Teks (${pendingTextCount})...`;
+      syncLabel = `Sync (${pendingTextCount})...`;
     } else if (pendingPhotoCount > 0) {
-      syncLabel = `Upload Foto (${pendingPhotoCount})...`;
+      syncLabel = `Foto (${pendingPhotoCount})...`;
     } else {
       syncLabel = 'Menyinkronkan...';
     }
     dotColor = 'bg-[#007AFF]';
   } else if (queueLength > 0) {
     if (pendingTextCount === 0 && pendingPhotoCount > 0) {
-      syncLabel = `Upload Foto (${pendingPhotoCount})`;
-      dotColor = 'bg-slate-400';
+      syncLabel = `Foto (${pendingPhotoCount})`;
+      dotColor = 'bg-[#8E8E93]';
     } else {
       syncLabel = `Antrean (${queueLength})`;
       dotColor = 'bg-[#007AFF]';
@@ -81,67 +83,80 @@ export const Header: React.FC<HeaderProps> = ({
   }
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-30 shrink-0 bg-white border-b border-black/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.02)] pt-[env(safe-area-inset-top,0px)]">
-      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 h-16 flex items-center justify-between gap-2">
-        {/* Left: Clickable AYO DANUSAN! logotext + Flat-out Text Division */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0 min-w-0">
+    <header
+      className={`sticky top-0 left-0 right-0 z-30 shrink-0 pt-[env(safe-area-inset-top,0px)] header-glass ${
+        isScrolled ? 'header-glass--scrolled' : ''
+      }`}
+    >
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 h-14 flex items-center justify-between gap-2">
+        {/* Zone 1 (Left): Brand Wordmark + Quiet Inline Division Indicator */}
+        <div className="flex items-baseline gap-1.5 sm:gap-2 min-w-0">
           <button
             type="button"
             onClick={() => {
               triggerHaptic('light');
               onOpenPWAInfo();
             }}
-            className="pressable text-left group flex items-center min-h-[44px] focus:outline-none shrink-0 touch-manipulation"
+            className="pressable text-left group inline-flex items-center min-h-[44px] focus:outline-none shrink-0"
             title="Ketuk untuk melihat Panduan Pasang PWA"
             aria-label="Buka Panduan Pasang PWA"
           >
-            <span className="text-base sm:text-xl font-bold tracking-tight text-slate-900 select-none group-hover:text-[#007AFF] transition-colors whitespace-nowrap">
+            <span className="text-[16px] sm:text-[18px] font-bold tracking-[-0.02em] text-[#1C1C1E] select-none group-hover:text-[#007AFF] transition-colors whitespace-nowrap">
               AYO DANUSAN!
             </span>
           </button>
 
           {team && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenSettings();
-              }}
-              className="pressable min-w-0 inline-flex items-center gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] transition-colors touch-manipulation text-slate-700 hover:text-slate-900"
-              title={`Divisi: ${team}. Ketuk untuk ganti divisi atau sinkron menu.`}
-              aria-label={`Divisi aktif ${team}. Buka pengaturan.`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#007AFF] shrink-0" />
-              <span className="text-xs sm:text-sm font-semibold tracking-tight whitespace-nowrap">
-                {team}
+            <>
+              <span aria-hidden="true" className="text-[#C7C7CC] text-xs font-medium select-none shrink-0">
+                ·
               </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenSettings();
+                }}
+                className="pressable relative min-w-0 inline-flex items-center min-h-[44px] px-1 rounded-lg text-[#636366] hover:text-[#1C1C1E] transition-colors focus:outline-none"
+                title={`Divisi: ${team}. Ketuk untuk ganti divisi atau sinkron menu.`}
+                aria-label={`Divisi aktif ${team}. Buka pengaturan.`}
+              >
+                <span className="text-[12px] sm:text-[13px] font-medium tracking-[-0.01em] whitespace-nowrap truncate">
+                  {team}
+                </span>
+              </button>
+            </>
           )}
         </div>
 
-        {/* Center: Sync Status & Mode Hemat Baterai (Compressed for mobile) */}
-        <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+        {/* Zone 2 (Right): Grouped Sync Status, Battery Indicator & Actions */}
+        <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
+          {/* Sync Status */}
           <button
             type="button"
             onClick={() => {
               triggerHaptic('light');
               onSyncClick();
             }}
-            className="pressable min-w-0 inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] transition-colors touch-manipulation"
+            className="pressable relative inline-flex items-center gap-1.5 min-h-[36px] px-2 rounded-lg hover:bg-black/[0.04] transition-colors before:content-[''] before:absolute before:-inset-y-1 before:inset-x-0"
             aria-label="Status Sinkronisasi"
-            title={queueLength > 0 ? `Antrean: ${pendingTextCount} teks, ${pendingPhotoCount} foto. Klik untuk sinkronkan.` : 'Semua transaksi tersinkron'}
+            title={
+              queueLength > 0
+                ? `Antrean: ${pendingTextCount} teks, ${pendingPhotoCount} foto. Klik untuk sinkronkan.`
+                : 'Semua transaksi tersinkron'
+            }
           >
             {isFullySynced ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5] shrink-0" />
-                <span className="hidden sm:inline text-xs font-medium text-slate-600 truncate tracking-tight">
+                <Check className="w-3.5 h-3.5 text-[#34C759] stroke-[2.5] shrink-0" />
+                <span className="hidden sm:inline text-xs font-medium text-[#636366] tracking-[-0.01em] whitespace-nowrap">
                   {syncLabel}
                 </span>
               </>
             ) : (
               <>
                 <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
-                <span className="text-xs font-medium text-slate-600 truncate tracking-tight max-w-[85px] xs:max-w-[120px] sm:max-w-none">
+                <span className="text-xs font-medium text-[#636366] truncate tracking-[-0.01em] max-w-[78px] sm:max-w-none whitespace-nowrap">
                   {syncLabel}
                 </span>
                 {isSyncing && (
@@ -151,19 +166,18 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
+          {/* Battery Saver Indicator (only when active) */}
           {isBatterySaver && (
             <span
-              className="inline-flex items-center text-amber-500 p-1 rounded-md shrink-0 transition-transform active:scale-95"
+              className="inline-flex items-center justify-center w-7 h-8 text-[#FF9500] shrink-0"
               title="Mode Hemat Baterai aktif"
               aria-label="Mode Hemat Baterai aktif"
             >
               <ZapOff className="w-3.5 h-3.5 stroke-[2.2]" />
             </span>
           )}
-        </div>
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Optional Install PWA Action */}
           {isInstallable && (
             <button
               type="button"
@@ -171,11 +185,11 @@ export const Header: React.FC<HeaderProps> = ({
                 triggerHaptic('light');
                 onOpenPWAInfo();
               }}
-              className="pressable inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#007AFF] hover:bg-blue-50/60 transition-colors touch-manipulation"
+              className="pressable inline-flex items-center gap-1 h-8 px-2 rounded-lg text-xs font-semibold text-[#007AFF] hover:bg-[#007AFF]/[0.08] transition-colors whitespace-nowrap"
               title="Pasang aplikasi ke Layar Utama HP"
             >
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline sm:inline">Pasang</span>
+              <span className="hidden sm:inline">Pasang</span>
             </button>
           )}
 
@@ -186,11 +200,11 @@ export const Header: React.FC<HeaderProps> = ({
               triggerHaptic('warning');
               onResetCart();
             }}
-            className="pressable relative w-8 h-8 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors touch-manipulation before:content-[''] before:absolute before:-inset-2 before:z-10"
+            className="pressable relative w-8 h-8 rounded-lg hover:bg-black/[0.04] text-[#636366] hover:text-[#1C1C1E] flex items-center justify-center transition-colors before:content-[''] before:absolute before:-inset-1.5 before:z-10"
             title="Reset Keranjang"
             aria-label="Reset Keranjang"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-4 h-4 stroke-[1.9]" />
           </button>
 
           {/* Pengaturan & Menu */}
@@ -200,11 +214,11 @@ export const Header: React.FC<HeaderProps> = ({
               triggerHaptic('light');
               onOpenSettings();
             }}
-            className="pressable relative w-8 h-8 rounded-lg hover:bg-black/[0.04] active:bg-black/[0.08] text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors touch-manipulation before:content-[''] before:absolute before:-inset-2 before:z-10"
+            className="pressable relative w-8 h-8 rounded-lg hover:bg-black/[0.04] text-[#636366] hover:text-[#1C1C1E] flex items-center justify-center transition-colors before:content-[''] before:absolute before:-inset-1.5 before:z-10"
             title="Menu & Pengaturan"
             aria-label="Menu & Pengaturan"
           >
-            <Menu className="w-4 h-4 stroke-[2.2]" />
+            <Menu className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
       </div>

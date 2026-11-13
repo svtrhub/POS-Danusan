@@ -5,11 +5,41 @@
     --bg-system: #F2F2F7;
     --card-system: #FFFFFF;
     --text-primary: #1C1C1E;
-    --text-secondary: #8E8E93;
+    --text-secondary: #636366;
+    --text-tertiary: #8E8E93;
     --brand-blue: #007AFF;
     --brand-green: #34C759;
     --brand-orange: #FF9500;
     --brand-red: #FF3B30;
+    --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+    --header-bg: rgba(255, 255, 255, 0.88);
+    --header-bg-scrolled: rgba(255, 255, 255, 0.68);
+    --header-backdrop: blur(8px) saturate(110%);
+    --header-backdrop-scrolled: blur(20px) saturate(180%);
+    --header-shadow: 0 1px 0 rgba(0, 0, 0, 0.035);
+    --header-shadow-scrolled: 0 1px 0 rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.03);
+
+    /* Variant A: Apple Light Frost Liquid Glass (In-App Notification Pill) */
+    --toast-glass-bg: rgba(255, 255, 255, 0.55);
+    --toast-glass-solid-fallback: #F2F3F5;
+    --toast-glass-blur: 16px;
+    --toast-glass-sat: 165%;
+    --toast-glass-bright: 1.08;
+    --toast-glass-noise-opacity: 0.03;
+    --toast-glass-specular-color: rgba(255, 255, 255, 0.6);
+    --toast-glass-specular-opacity: 0.6;
+    --toast-glass-scrim: rgba(255, 255, 255, 0.42);
+    --toast-glass-text: #14161A;
+    --toast-glass-border-fallback: rgba(0, 0, 0, 0.08);
+    --toast-glass-shadow:
+      0 1px 1px rgba(0, 0, 0, 0.04),
+      0 8px 24px rgba(31, 38, 52, 0.12),
+      0 20px 40px rgba(31, 38, 52, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.08);
+    --toast-icon-success: #16A34A;
+    --toast-icon-info: #007AFF;
+    --toast-icon-error: #DC2626;
   }
 
   html, body, #root {
@@ -60,14 +90,81 @@ input[type="number"] {
   letter-spacing: -0.015em;
 }
 
+/* ---------------------------------------------------------------------------
+ * EMIL KOWALSKI TACTILE INTERACTION & COMPOSITOR MOTION
+ * Unified pointer-down scale + snappy ease-out (strictly transform/opacity)
+ * --------------------------------------------------------------------------- */
 .pressable {
-  transition: transform 80ms cubic-bezier(0.2, 0, 0, 1), filter 80ms ease;
+  transition: transform 120ms var(--ease-snappy), opacity 120ms ease-out;
   touch-action: manipulation;
 }
 
 .pressable:active {
-  transform: scale(0.96);
-  filter: brightness(0.95);
+  transform: scale(0.97);
+}
+
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sheet-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: backdrop-enter 160ms var(--ease-snappy) both;
+}
+
+.animate-modal-surface {
+  animation: modal-enter 200ms var(--ease-snappy) both;
+}
+
+.animate-sheet-surface {
+  animation: sheet-enter 210ms var(--ease-snappy) both;
+}
+
+.animate-toast-surface {
+  animation: toast-enter 180ms var(--ease-snappy) both;
+}
+
+@media (min-width: 640px) {
+  .animate-sheet-surface {
+    animation-name: modal-enter;
+  }
 }
 
 /* Custom scrollbars for modals */
@@ -84,8 +181,224 @@ input[type="number"] {
 }
 
 /* ---------------------------------------------------------------------------
- * BATTERY SAVER MODE: Power preservation for low-power mobile devices
+ * ACCESSIBILITY: REDUCED MOTION & REDUCED TRANSPARENCY
+ * Gentle opacity cross-fades instead of vestibular scale/slide transforms
  * --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .pressable {
+    transition: opacity 120ms ease-out;
+  }
+  .pressable:active {
+    transform: none;
+    opacity: 0.85;
+  }
+  .animate-fade-in,
+  .animate-modal-surface,
+  .animate-sheet-surface,
+  .animate-toast-surface {
+    animation: backdrop-enter 150ms ease-out both;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * HEADER TRANSLUCENCY & DYNAMIC SCROLL BLUR (CSS-variable driven)
+ * --------------------------------------------------------------------------- */
+.header-glass {
+  background-color: var(--header-bg);
+  -webkit-backdrop-filter: var(--header-backdrop);
+  backdrop-filter: var(--header-backdrop);
+  box-shadow: var(--header-shadow);
+  transition:
+    background-color 220ms var(--ease-snappy),
+    -webkit-backdrop-filter 220ms var(--ease-snappy),
+    backdrop-filter 220ms var(--ease-snappy),
+    box-shadow 220ms var(--ease-snappy);
+}
+
+.header-glass--scrolled {
+  background-color: var(--header-bg-scrolled);
+  -webkit-backdrop-filter: var(--header-backdrop-scrolled);
+  backdrop-filter: var(--header-backdrop-scrolled);
+  box-shadow: var(--header-shadow-scrolled);
+}
+
+/* ---------------------------------------------------------------------------
+ * APPLE LIQUID GLASS NOTIFICATION PILL (5-Layer Optical Stack — Variant A)
+ * --------------------------------------------------------------------------- */
+.toast-liquid-glass {
+  position: relative;
+  isolation: isolate;
+  contain: layout paint style;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-color: var(--toast-glass-solid-fallback);
+  color: var(--toast-glass-text);
+  box-shadow: var(--toast-glass-shadow);
+  touch-action: manipulation;
+  transition: transform 160ms var(--ease-snappy), box-shadow 160ms var(--ease-snappy);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .toast-liquid-glass {
+    background-color: var(--toast-glass-bg);
+    -webkit-backdrop-filter: blur(var(--toast-glass-blur)) saturate(var(--toast-glass-sat)) brightness(var(--toast-glass-bright));
+    backdrop-filter: blur(var(--toast-glass-blur)) saturate(var(--toast-glass-sat)) brightness(var(--toast-glass-bright));
+  }
+}
+
+/* Layer 1: Mandatory legibility scrim */
+.toast-liquid-glass__scrim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: var(--toast-glass-scrim);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Layer 5: Monochrome frost noise grain (eliminates gradient banding) */
+.toast-liquid-glass__noise {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: var(--toast-glass-noise-opacity);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Layer 4: Radial / angled top-35% specular sweep with visionOS liquid press shift */
+.toast-liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    90% 42% at 22% 0%,
+    var(--toast-glass-specular-color) 0%,
+    rgba(255, 255, 255, 0.16) 40%,
+    transparent 72%
+  );
+  mix-blend-mode: screen;
+  opacity: var(--toast-glass-specular-opacity);
+  pointer-events: none;
+  z-index: 2;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Layer 3: Dual-tone gradient refraction border */
+.toast-liquid-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.25) 35%,
+    rgba(255, 255, 255, 0.05) 60%,
+    rgba(255, 255, 255, 0.35) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.toast-liquid-glass__content {
+  position: relative;
+  z-index: 4;
+}
+
+.toast-liquid-glass:active {
+  transform: scale(0.975);
+}
+
+.toast-liquid-glass:active::before {
+  transform: translate(8px, 4px) scale(1.06);
+}
+
+.toast-icon--success {
+  color: var(--toast-icon-success);
+}
+
+.toast-icon--info {
+  color: var(--toast-icon-info);
+}
+
+.toast-icon--error {
+  color: var(--toast-icon-error);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-liquid-glass,
+  .toast-liquid-glass::before {
+    transition: none !important;
+  }
+  .toast-liquid-glass:active {
+    transform: none;
+    opacity: 0.88;
+  }
+  .toast-liquid-glass:active::before {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --header-bg: var(--card-system);
+    --header-bg-scrolled: var(--card-system);
+    --header-backdrop: none;
+    --header-backdrop-scrolled: none;
+  }
+
+  .backdrop-blur-xs,
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-xl,
+  .header-glass,
+  .header-glass--scrolled {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .toast-liquid-glass {
+    background-color: var(--toast-glass-solid-fallback) !important;
+    border-color: var(--toast-glass-border-fallback);
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .toast-liquid-glass::before,
+  .toast-liquid-glass::after,
+  .toast-liquid-glass__scrim,
+  .toast-liquid-glass__noise {
+    display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * BATTERY SAVER MODE: Power preservation for low-power mobile devices
+ * Preserves the exact dark status-quo notification pill (#1C1C1E)
+ * --------------------------------------------------------------------------- */
+html.battery-saver {
+  --header-bg: var(--card-system);
+  --header-bg-scrolled: var(--card-system);
+  --header-backdrop: none;
+  --header-backdrop-scrolled: none;
+  --toast-glass-bg: #1C1C1E;
+  --toast-glass-solid-fallback: #1C1C1E;
+  --toast-glass-text: #FFFFFF;
+  --toast-glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --toast-icon-success: #34C759;
+  --toast-icon-info: #60A5FA;
+  --toast-icon-error: #FF453A;
+}
+
 html.battery-saver *,
 html.battery-saver *::before,
 html.battery-saver *::after {
@@ -94,20 +407,44 @@ html.battery-saver *::after {
 
 html.battery-saver .animate-pulse,
 html.battery-saver .animate-bounce,
-html.battery-saver .animate-fade-in {
+html.battery-saver .animate-fade-in,
+html.battery-saver .animate-modal-surface,
+html.battery-saver .animate-sheet-surface,
+html.battery-saver .animate-toast-surface {
   animation: none !important;
 }
 
 /* Eliminate GPU-intensive multi-pass backdrop blur filters */
 html.battery-saver .backdrop-blur-xs,
 html.battery-saver .backdrop-blur-sm,
-html.battery-saver .backdrop-blur-md {
+html.battery-saver .backdrop-blur-md,
+html.battery-saver .backdrop-blur-xl,
+html.battery-saver .header-glass,
+html.battery-saver .header-glass--scrolled {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  background-color: var(--card-system) !important;
 }
 
-/* Optimize touch press feedback to instant brightness shift without transform re-compositing */
-html.battery-saver .pressable:active {
+html.battery-saver .toast-liquid-glass {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: var(--toast-glass-bg) !important;
+  color: var(--toast-glass-text) !important;
+  box-shadow: var(--toast-glass-shadow) !important;
+  border-color: transparent !important;
+}
+
+html.battery-saver .toast-liquid-glass::before,
+html.battery-saver .toast-liquid-glass::after,
+html.battery-saver .toast-liquid-glass__scrim,
+html.battery-saver .toast-liquid-glass__noise {
+  display: none !important;
+}
+
+/* Optimize touch press feedback to instant opacity shift without transform re-compositing */
+html.battery-saver .pressable:active,
+html.battery-saver .toast-liquid-glass:active {
   transform: none !important;
-  filter: brightness(0.92);
+  opacity: 0.85;
 }

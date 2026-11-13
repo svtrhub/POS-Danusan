@@ -22,21 +22,21 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">
-      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[88dvh] flex flex-col border border-slate-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[88dvh] flex flex-col overflow-hidden animate-sheet-surface">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-5 py-3.5 bg-white/90 backdrop-blur-md shadow-[0_1px_0_rgba(0,0,0,0.04)]">
           <div className="flex items-center gap-3">
             <img
               src={APP_LOGO_DATA}
               alt="Logo AYO DANUSAN!"
-              className="w-10 h-10 rounded-2xl object-contain border border-black/[0.04] bg-white shrink-0 shadow-2xs"
+              className="w-9 h-9 rounded-xl object-contain bg-white shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
             />
             <div>
-              <h2 className="text-base font-bold text-slate-900 leading-tight">
+              <h2 className="text-[16px] font-semibold text-[#1C1C1E] tracking-[-0.015em] leading-tight">
                 AYO DANUSAN!
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-[#636366] mt-0.5">
                 Panduan Pasang Aplikasi (PWA) di HP
               </p>
             </div>
@@ -47,20 +47,21 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
               triggerHaptic('light');
               onClose();
             }}
-            className="relative w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 before:content-[''] before:absolute before:-inset-2 before:z-10 touch-manipulation"
+            className="pressable relative w-8 h-8 rounded-full bg-[#E5E5EA]/80 hover:bg-[#E5E5EA] text-[#636366] hover:text-[#1C1C1E] flex items-center justify-center transition-colors before:content-[''] before:absolute before:-inset-2 before:z-10"
+            aria-label="Tutup Panduan"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 stroke-[2.2]" />
           </button>
         </div>
 
         {/* Content - Pure text in white window, zero colorful cards */}
-        <div className="p-5 overflow-y-auto space-y-6 text-slate-800">
+        <div className="p-5 overflow-y-auto space-y-6 text-[#1C1C1E]">
           {/* Petunjuk Google Chrome */}
           <div className="space-y-2">
-            <h3 className="text-sm font-bold text-slate-900">
+            <h3 className="text-sm font-semibold text-[#1C1C1E]">
               1. Google Chrome (Android &amp; Desktop)
             </h3>
-            <ol className="text-xs text-slate-600 space-y-2 list-decimal pl-4 leading-relaxed">
+            <ol className="text-xs text-[#636366] space-y-2 list-decimal pl-4 leading-relaxed">
               <li>Buka tautan aplikasi ini di browser <strong>Google Chrome</strong>.</li>
               <li>
                 Ketuk tombol <strong>"Pasang Aplikasi Sekarang"</strong> di bawah ini, atau ketuk menu titik tiga (⋮) di pojok kanan atas browser Chrome.
@@ -82,7 +83,7 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
                     onInstall();
                     onClose();
                   }}
-                  className="pressable w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95"
+                  className="pressable w-full h-10 rounded-xl bg-[#007AFF] hover:bg-[#0062E0] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
                 >
                   <Download className="w-4 h-4" />
                   <span>Pasang Aplikasi Sekarang</span>
@@ -91,14 +92,14 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
             )}
           </div>
 
-          <div className="border-t border-slate-100" />
+          <div className="h-px bg-slate-100" />
 
           {/* Petunjuk Safari di iPhone */}
           <div className="space-y-2">
-            <h3 className="text-sm font-bold text-slate-900">
+            <h3 className="text-sm font-semibold text-[#1C1C1E]">
               2. Safari (iPhone &amp; iPad)
             </h3>
-            <ol className="text-xs text-slate-600 space-y-2 list-decimal pl-4 leading-relaxed">
+            <ol className="text-xs text-[#636366] space-y-2 list-decimal pl-4 leading-relaxed">
               <li>
                 Buka tautan aplikasi ini langsung melalui browser resmi <strong>Safari</strong> (bukan di dalam browser Instagram, WhatsApp, atau TikTok).
               </li>
@@ -119,14 +120,14 @@ export const PWAExplainModal: React.FC<PWAExplainModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-white border-t border-slate-100 flex justify-end">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-white/90 backdrop-blur-md shadow-[0_-1px_0_rgba(0,0,0,0.04)] flex justify-end">
           <button
             type="button"
             onClick={() => {
               triggerHaptic('light');
               onClose();
             }}
-            className="pressable h-10 px-6 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition active:scale-95"
+            className="pressable h-10 px-6 rounded-xl bg-[#F2F2F7] hover:bg-[#E5E5EA]/80 text-[#1C1C1E] text-xs font-semibold transition-colors"
           >
             Tutup
           </button>

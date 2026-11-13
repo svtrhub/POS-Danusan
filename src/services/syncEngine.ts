@@ -8,8 +8,11 @@ import {
   getConfig,
   migrateFromLocalStorage,
 } from './indexedDBStorage';
+import { getDefaultActivationLink } from './activationLinks';
 
 export const DEFAULT_MENU_SHEET_ID = '1r6az25v1wPH5qcKc9YyoHY9qp4ejTmAVFsgv3YfhUsI';
+const TEAM_CUSTOM_URLS_STORAGE_KEY = 'POS_TEAM_CUSTOM_URLS';
+const TEAM_MENUS_CACHE_STORAGE_KEY = 'POS_TEAM_MENUS_V1';
 
 export interface SyncEngineState {
   queue: QueuedOrder[];
@@ -17,7 +20,6 @@ export interface SyncEngineState {
   hasSyncError: boolean;
   apiUrl: string;
   team: TeamDivision;
-  menuSheetId: string;
   isReady: boolean;
   isBatterySaver: boolean;
   pendingTextCount: number;
@@ -35,9 +37,9 @@ class SyncEngineService {
   private queue: QueuedOrder[] = [];
   private isSyncing = false;
   private hasSyncError = false;
-  private apiUrl = '';
+  private customTeamUrls: Partial<Record<TeamDivision, string>> = {};
   private team: TeamDivision = 'Team A';
-  private menuSheetId = DEFAULT_MENU_SHEET_ID;
+  private apiUrl = getDefaultActivationLink('Team A');
   private isReady = false;
   private isBatterySaver = false;
   private periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -46,7 +48,40 @@ class SyncEngineService {
   private retryAttempt = 0;
 
   constructor() {
+    this.hydrateSyncStateFromLocalStorage();
     this.init();
+  }
+
+  private hydrateSyncStateFromLocalStorage() {
+    if (typeof window === 'undefined') return;
+    try {
+      const storedTeam = localStorage.getItem('POS_TEAM') as TeamDivision | null;
+      if (storedTeam === 'Team A' || storedTeam === 'Team B' || storedTeam === 'Team C') {
+        this.team = storedTeam;
+      }
+
+      const rawCustomUrls = localStorage.getItem(TEAM_CUSTOM_URLS_STORAGE_KEY);
+      if (rawCustomUrls) {
+        const parsed = JSON.parse(rawCustomUrls);
+        if (parsed && typeof parsed === 'object') {
+          this.customTeamUrls = parsed;
+        }
+      }
+
+      const storedSaver = localStorage.getItem('POS_BATTERY_SAVER');
+      if (storedSaver !== null) {
+        this.isBatterySaver = storedSaver === 'true';
+      }
+
+      this.apiUrl = this.getActivationUrlForTeam(this.team);
+      localStorage.setItem('POS_API_URL', this.apiUrl);
+
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.toggle('battery-saver', this.isBatterySaver);
+      }
+    } catch (_) {
+      this.apiUrl = getDefaultActivationLink(this.team);
+    }
   }
 
   private async init() {
@@ -67,34 +102,11 @@ class SyncEngineService {
         }
       } catch (_) {}
 
-      // Apply initial battery saver class to DOM document element
       if (typeof document !== 'undefined') {
         document.documentElement.classList.toggle('battery-saver', this.isBatterySaver);
       }
 
-      // 3. Load API URL with dual-layer bi-directional recovery (IndexedDB + localStorage)
-      const idbUrl = await getConfig<string>('apiUrl');
-      let localUrl = '';
-      try {
-        localUrl = localStorage.getItem('POS_API_URL') || '';
-      } catch (_) {}
-
-      const resolvedUrl = (idbUrl || localUrl || '').trim();
-      this.apiUrl = resolvedUrl;
-
-      // Self-heal both persistent stores if one was cleared
-      if (resolvedUrl) {
-        if (!idbUrl) {
-          await setConfig('apiUrl', resolvedUrl).catch(() => {});
-        }
-        if (!localUrl) {
-          try {
-            localStorage.setItem('POS_API_URL', resolvedUrl);
-          } catch (_) {}
-        }
-      }
-
-      // 4. Load Team Division preference (Team A / Team B / Team C)
+      // 3. Load Team Division preference (Team A / Team B / Team C)
       try {
         const storedTeam = localStorage.getItem('POS_TEAM') as TeamDivision | null;
         if (storedTeam === 'Team A' || storedTeam === 'Team B' || storedTeam === 'Team C') {
@@ -107,26 +119,29 @@ class SyncEngineService {
         }
       } catch (_) {}
 
-      // 5. Load Menu Sheet ID / URL
+      // 4. Reconcile per-team custom URL overrides (defaults automatically to LINK_AKTIVASI.txt)
       try {
-        const storedSheet = localStorage.getItem('POS_MENU_SHEET');
-        if (storedSheet) {
-          this.menuSheetId = storedSheet;
-        } else {
-          const idbSheet = await getConfig<string>('menuSheet');
-          if (idbSheet) {
-            this.menuSheetId = idbSheet;
-          }
+        const idbCustomUrls = await getConfig<Partial<Record<TeamDivision, string>>>('customTeamUrls');
+        if (idbCustomUrls && typeof idbCustomUrls === 'object') {
+          this.customTeamUrls = { ...idbCustomUrls, ...this.customTeamUrls };
         }
       } catch (_) {}
 
-      // 6. Rehydrate full crash-proof offline queue from IndexedDB with Priority Sorting
+      this.apiUrl = this.getActivationUrlForTeam(this.team);
+      try {
+        localStorage.setItem('POS_API_URL', this.apiUrl);
+        localStorage.setItem(TEAM_CUSTOM_URLS_STORAGE_KEY, JSON.stringify(this.customTeamUrls));
+      } catch (_) {}
+      await setConfig('apiUrl', this.apiUrl).catch(() => {});
+      await setConfig('customTeamUrls', this.customTeamUrls).catch(() => {});
+
+      // 5. Rehydrate full crash-proof offline queue from IndexedDB with Priority Sorting
       const diskQueue = await getAllQueueOrders();
       this.queue = this.sortQueueByPriority(diskQueue);
       this.isReady = true;
       this.notify();
 
-      // 7. Periodic background sync management (disabled when Battery Saver is active)
+      // 6. Periodic background sync management (disabled when Battery Saver is active)
       if (!this.isBatterySaver) {
         this.startPeriodicSync();
         if (this.queue.length > 0 && this.apiUrl && navigator.onLine) {
@@ -190,7 +205,6 @@ class SyncEngineService {
       hasSyncError: this.hasSyncError,
       apiUrl: this.apiUrl,
       team: this.team,
-      menuSheetId: this.menuSheetId,
       isReady: this.isReady,
       isBatterySaver: this.isBatterySaver,
       pendingTextCount,
@@ -258,65 +272,115 @@ class SyncEngineService {
     this.subscribers.forEach((fn) => fn(state));
   }
 
-  public async setApiUrl(url: string) {
-    this.apiUrl = url.trim();
+  public getActivationUrlForTeam(team: TeamDivision): string {
+    const customUrl = this.customTeamUrls[team]?.trim();
+    return customUrl || getDefaultActivationLink(team);
+  }
+
+  public getDefaultUrlForTeam(team: TeamDivision): string {
+    return getDefaultActivationLink(team);
+  }
+
+  public getCachedMenuForTeam(team: TeamDivision): Product[] | null {
     try {
+      const raw = localStorage.getItem(TEAM_MENUS_CACHE_STORAGE_KEY);
+      if (!raw) return null;
+      const map = JSON.parse(raw);
+      const list = map?.[team];
+      return Array.isArray(list) && list.length > 0 ? list : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  public saveCachedMenuForTeam(team: TeamDivision, products: Product[]): void {
+    if (!Array.isArray(products) || products.length === 0) return;
+    try {
+      const raw = localStorage.getItem(TEAM_MENUS_CACHE_STORAGE_KEY);
+      const map = raw ? JSON.parse(raw) : {};
+      map[team] = products;
+      localStorage.setItem(TEAM_MENUS_CACHE_STORAGE_KEY, JSON.stringify(map));
+    } catch (_) {}
+  }
+
+  public async setApiUrl(url: string, targetTeam?: TeamDivision) {
+    const teamKey = targetTeam || this.team;
+    const trimmed = url.trim();
+    const defaultUrl = getDefaultActivationLink(teamKey);
+
+    if (!trimmed || trimmed === defaultUrl) {
+      delete this.customTeamUrls[teamKey];
+    } else {
+      this.customTeamUrls[teamKey] = trimmed;
+    }
+
+    if (teamKey === this.team) {
+      this.apiUrl = this.getActivationUrlForTeam(this.team);
+    }
+
+    try {
+      localStorage.setItem(TEAM_CUSTOM_URLS_STORAGE_KEY, JSON.stringify(this.customTeamUrls));
       localStorage.setItem('POS_API_URL', this.apiUrl);
+      await setConfig('customTeamUrls', this.customTeamUrls);
       await setConfig('apiUrl', this.apiUrl);
     } catch (_) {}
+
     this.notify();
-    if (this.apiUrl && this.queue.length > 0 && navigator.onLine) {
+    if (this.apiUrl && this.queue.length > 0 && navigator.onLine && !this.isBatterySaver) {
       this.processQueue();
     }
   }
 
   public setTeam(team: TeamDivision) {
     this.team = team;
+    this.apiUrl = this.getActivationUrlForTeam(team);
     try {
       localStorage.setItem('POS_TEAM', team);
+      localStorage.setItem('POS_API_URL', this.apiUrl);
     } catch (_) {}
     setConfig('team', team).catch(() => {});
+    setConfig('apiUrl', this.apiUrl).catch(() => {});
     this.notify();
-  }
 
-  public setMenuSheetId(sheetInput: string) {
-    const clean = sheetInput.trim() || DEFAULT_MENU_SHEET_ID;
-    this.menuSheetId = clean;
-    try {
-      localStorage.setItem('POS_MENU_SHEET', clean);
-    } catch (_) {}
-    setConfig('menuSheet', clean).catch(() => {});
-    this.notify();
+    if (this.apiUrl && this.queue.length > 0 && typeof navigator !== 'undefined' && navigator.onLine && !this.isBatterySaver) {
+      this.processQueue();
+    }
   }
 
   public async enqueue(order: QueuedOrder): Promise<void> {
-    // 1. Priority Insertion: Text-only transactions (!order.photo_base64) are placed
+    const stampedOrder: QueuedOrder = {
+      ...order,
+      team: order.team || this.team,
+      api_url: order.api_url || this.apiUrl,
+    };
+
+    // 1. Priority Insertion: Text-only transactions (!stampedOrder.photo_base64) are placed
     // ahead of any pending photo-bearing transactions in the queue.
-    if (!order.photo_base64) {
+    if (!stampedOrder.photo_base64) {
       const lastTextIdx = this.queue.reduce(
         (lastIdx, item, idx) => (!item.photo_base64 ? idx : lastIdx),
         -1
       );
       if (lastTextIdx === -1) {
         // Place text order at the front ahead of photo orders
-        this.queue = [order, ...this.queue];
+        this.queue = [stampedOrder, ...this.queue];
       } else {
         // Insert right after last text order, ahead of photo orders
         this.queue = [
           ...this.queue.slice(0, lastTextIdx + 1),
-          order,
+          stampedOrder,
           ...this.queue.slice(lastTextIdx + 1),
         ];
       }
     } else {
       // Photo orders are queued after text orders
-      this.queue = [...this.queue, order];
+      this.queue = [...this.queue, stampedOrder];
     }
     this.notify();
 
     // 2. Asynchronous write-through to IndexedDB disk (Crash-Proof)
     try {
-      await saveQueueOrder(order);
+      await saveQueueOrder(stampedOrder);
       try {
         localStorage.setItem(
           'POS_QUEUE_META',
@@ -329,7 +393,7 @@ class SyncEngineService {
 
     // 3. Trigger immediate sync (faster 10ms dispatch for high-priority text orders)
     if (!this.isBatterySaver) {
-      const delay = !order.photo_base64 ? 10 : 100;
+      const delay = !stampedOrder.photo_base64 ? 10 : 100;
       setTimeout(() => {
         this.processQueue();
       }, delay);
@@ -337,7 +401,7 @@ class SyncEngineService {
   }
 
   public async processQueue(): Promise<boolean> {
-    if (!this.apiUrl || !this.queue.length || this.isSyncing) {
+    if (!this.queue.length || this.isSyncing) {
       return false;
     }
 
@@ -361,12 +425,19 @@ class SyncEngineService {
       const itemToSync = this.queue[targetIdx];
 
       const isTextOnly = !itemToSync.photo_base64;
+      const targetUrl = (itemToSync.api_url || this.apiUrl || '').trim();
+      if (!targetUrl) {
+        this.isSyncing = false;
+        this.notify();
+        return false;
+      }
+
       const controller = new AbortController();
       const timeoutMs = isTextOnly ? ORDER_SYNC_TIMEOUT_FAST_MS : ORDER_SYNC_TIMEOUT_MS;
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const res = await fetch(this.apiUrl, {
+        const res = await fetch(targetUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(itemToSync),
@@ -659,14 +730,11 @@ class SyncEngineService {
    */
   public async fetchMenuFromCentralSheet(
     teamOverride?: TeamDivision,
-    sheetInputOverride?: string,
     existingProducts: Product[] = [],
     preserveCustom = true
   ): Promise<Product[]> {
     const targetTeam = teamOverride || this.team;
-    const rawSheet = (sheetInputOverride ?? this.menuSheetId).trim() || DEFAULT_MENU_SHEET_ID;
-    const match = rawSheet.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    const sheetId = match ? match[1] : rawSheet;
+    const sheetId = DEFAULT_MENU_SHEET_ID;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);

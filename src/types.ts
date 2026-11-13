@@ -23,6 +23,8 @@ export interface QueuedOrder {
   items: OrderItem[];
   photo_base64: string;
   photo_mime: string;
+  team?: TeamDivision;
+  api_url?: string;
 }
 
 export interface DraftState {

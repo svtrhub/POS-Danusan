@@ -190,23 +190,23 @@ export const QRISPullCard: React.FC<QRISPullCardProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          className="fixed top-16 left-0 right-0 z-35 flex justify-center select-none touch-none cursor-grab active:cursor-grabbing"
+          className="fixed top-14 left-0 right-0 z-35 flex justify-center select-none touch-none cursor-grab active:cursor-grabbing"
           style={{
             transform: `translate3d(0, ${dragY}px, 0)`,
-            transition: isDragging ? 'none' : 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+            transition: isDragging ? 'none' : 'transform 200ms cubic-bezier(0.23, 1, 0.32, 1)',
           }}
         >
           <div
-            className="flex flex-col items-center px-4 pt-0.5 pb-1.5 bg-white/95 backdrop-blur-md rounded-b-2xl border-x border-b border-black/8 shadow-2xs hover:bg-white active:bg-slate-50 transition-colors"
+            className="flex flex-col items-center px-4 pt-1 pb-1.5 bg-white/92 backdrop-blur-md rounded-b-2xl hover:bg-white transition-colors"
             style={{
               boxShadow:
                 dragY > 0
-                  ? '0 6px 18px -2px rgba(0,0,0,0.12)'
-                  : '0 2px 6px rgba(0,0,0,0.03)',
+                  ? '0 8px 20px -4px rgba(0,0,0,0.12)'
+                  : '0 2px 8px rgba(0,0,0,0.05)',
             }}
           >
-            <div className="w-8 h-1 rounded-full bg-slate-300 mb-1" />
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 tracking-tight leading-none">
+            <div className="w-7 h-1 rounded-full bg-slate-300/80 mb-1" />
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#1C1C1E] tracking-[-0.01em] leading-none">
               <QrCode className="w-3.5 h-3.5 text-[#007AFF]" />
               <span>Tarik QRIS</span>
               <ChevronDown
@@ -237,8 +237,8 @@ export const QRISPullCard: React.FC<QRISPullCardProps> = ({
           transition: isDragging
             ? 'none'
             : isOpen
-            ? 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out'
-            : 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease-in',
+            ? 'transform 260ms cubic-bezier(0.23, 1, 0.32, 1), opacity 180ms cubic-bezier(0.23, 1, 0.32, 1)'
+            : 'transform 200ms cubic-bezier(0.32, 0.72, 0, 1), opacity 160ms cubic-bezier(0.23, 1, 0.32, 1)',
         }}
       >
         <div
@@ -246,15 +246,14 @@ export const QRISPullCard: React.FC<QRISPullCardProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          className="relative w-full max-w-xs sm:max-w-sm max-h-[min(540px,88vh)] bg-white rounded-3xl shadow-2xl border border-black/10 flex flex-col overflow-hidden cursor-grab active:cursor-grabbing"
+          className="relative w-full max-w-xs sm:max-w-sm max-h-[min(540px,88vh)] bg-white rounded-3xl flex flex-col overflow-hidden cursor-grab active:cursor-grabbing"
           style={{
-            boxShadow:
-              '0 24px 48px -12px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(0, 0, 0, 0.06)',
+            boxShadow: '0 24px 48px -12px rgba(0, 0, 0, 0.28)',
           }}
         >
           {/* Card Top: Status & Close Button */}
-          <div className="relative pt-3 pb-2 px-4 flex items-center justify-between border-b border-black/[0.06] bg-white shrink-0">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 tracking-tight">
+          <div className="relative pt-3 pb-2.5 px-4 flex items-center justify-between bg-white/95 backdrop-blur-md shadow-[0_1px_0_rgba(0,0,0,0.04)] shrink-0">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#1C1C1E] tracking-[-0.01em]">
               <QrCode className="w-3.5 h-3.5 text-[#007AFF]" />
               <span>QRIS Pembayaran Resmi</span>
             </div>
@@ -262,17 +261,17 @@ export const QRISPullCard: React.FC<QRISPullCardProps> = ({
             <button
               type="button"
               onClick={handleClose}
-              className="relative w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 before:content-[''] before:absolute before:-inset-2.5 before:z-10"
+              className="pressable relative w-7 h-7 rounded-full bg-[#E5E5EA]/80 hover:bg-[#E5E5EA] text-[#636366] hover:text-[#1C1C1E] flex items-center justify-center transition-colors before:content-[''] before:absolute before:-inset-2.5 before:z-10"
               title="Tutup QRIS (Geser ke atas)"
               aria-label="Tutup QRIS"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.1]" />
             </button>
           </div>
 
           {/* QRIS Image Surface */}
-          <div className="p-3 bg-slate-50 flex items-center justify-center overflow-hidden flex-1 min-h-0">
-            <div className="w-full max-w-[340px] bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200/80 flex items-center justify-center">
+          <div className="p-3.5 bg-[#F2F2F7] flex items-center justify-center overflow-hidden flex-1 min-h-0">
+            <div className="w-full max-w-[340px] bg-white rounded-2xl p-2 shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex items-center justify-center">
               <img
                 src={activeSrc}
                 alt="QRIS Pembayaran Resmi"
@@ -284,10 +283,10 @@ export const QRISPullCard: React.FC<QRISPullCardProps> = ({
           </div>
 
           {/* Bottom Swipe-Up Return Bar */}
-          <div className="pt-2.5 pb-3 px-4 bg-white border-t border-slate-100 flex flex-col items-center justify-center text-slate-500">
-            <div className="w-10 h-1.5 rounded-full bg-slate-300 mb-1" />
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
-              <ChevronUp className="w-3.5 h-3.5 text-[#007AFF] animate-bounce" />
+          <div className="pt-2.5 pb-3 px-4 bg-white flex flex-col items-center justify-center text-[#636366]">
+            <div className="w-9 h-1 rounded-full bg-slate-300/80 mb-1.5" />
+            <div className="flex items-center gap-1 text-[11px] font-medium text-[#636366]">
+              <ChevronUp className="w-3.5 h-3.5 text-[#007AFF]" />
               <span>Geser ke atas untuk kembali</span>
             </div>
           </div>

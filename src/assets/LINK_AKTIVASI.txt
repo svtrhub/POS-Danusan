@@ -1,0 +1,10 @@
+LINK AKTIVASI
+
+TEAM A
+https://script.google.com/macros/s/AKfycbzWE3jH3ikXML5V8pjpyIessUJJKBMK_9KQA1LjXxOH5okjaIQyXBG-zrqaor8UyG8RMQ/exec
+
+TEAM B
+https://script.google.com/macros/s/AKfycbyqhGjUTo2E_KmCOcF8QiH8sxD4IeW0r28QlrZ1vdouSR7mwJavRIM_20rpzqugoCIzhg/exec
+
+TEAM C
+https://script.google.com/macros/s/AKfycbxy8u9fClYIBTq3DddwBHFvYEcnf9ICt1C5yNlw0RjA5RG5-TOx6Byxo5Pa8vUldeePWg/exec
